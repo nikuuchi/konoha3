@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 2.6)
+find_library(HAVE_CLANG NAMES clang)
+if(HAVE_CLANG)
+set(PACKAGE_SOURCE_CODE clang_glue.c)
+set(PACKAGE_SCRIPT_CODE clang_glue.k)
+set(PACKAGE_EXTRA_LIBRARY ${HAVE_CLANG})
+add_konoha_package(clang)
+endif(HAVE_CLANG)
