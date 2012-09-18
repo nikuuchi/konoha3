@@ -38,7 +38,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-//#define GCDEBUG 1
 #if defined(GCDEBUG) && !defined(GCSTAT)
 #define GCSTAT 1
 #endif
@@ -655,7 +654,9 @@ static kObject *bm_malloc_internal(KonohaContext *kctx, HeapManager *mng, size_t
 //void *bm_realloc(KonohaContext *kctx, void *ptr, size_t os, size_t ns);
 //void bm_free(KonohaContext *kctx, void *ptr, size_t n);
 static void BMGC_dump(HeapManager *mng);
+#ifndef USE_SNAPSHOT_GC
 static void bitmapMarkingGC(KonohaContext *kctx, HeapManager *mng, enum gc_mode mode);
+#endif
 static void HeapManager_init(KonohaContext *kctx, HeapManager *mng, size_t heap_size);
 static void HeapManager_delete(KonohaContext *kctx, HeapManager *mng);
 static void HeapManager_final_free(KonohaContext *kctx, HeapManager *mng);
@@ -1058,11 +1059,8 @@ static bool nextSegment(HeapManager *mng, SubHeap *h, AllocationPointer *p, Kono
 			return true;
 		}
 	}
-#ifdef USE_GENERATIONAL_GC
+#if defined(USE_GENERATIONAL_GC) || defined(USE_SNAPSHOT_GC)
 	bitmap_set(&((KonohaContextVar*)kctx)->safepoint, GC_MINOR_FLAG,
-			(uintptr_t)((--h->minor_count) & (MINOR_COUNT-1)) == 0);
-#elif USE_SNAPSHOT_GC
-	bitmap_set(&((KonohaContextVar*)kctx)->safepoint, GC_FLAG,
 			(uintptr_t)((--h->minor_count) & (MINOR_COUNT-1)) == 0);
 #endif
 
@@ -1187,9 +1185,7 @@ static void *tryAlloc(KonohaContext *kctx, HeapManager *mng, SubHeap *h)
 	bool isEmpty = inc(p, h);
 
 #ifdef USE_SNAPSHOT_GC
-//	if(/* TODO threshold*/) {
-//		((KonohaContextVar*)kctx)->safepoint = GC_ROOT_SCAN;
-//	}
+	DBG_ASSERT((mng->segmentList != NULL || h->freelist != NULL || !isEmpty));
 #else
 	bitmap_set(&((KonohaContextVar*)kctx)->safepoint, GC_MAJOR_FLAG,
 			(mng->segmentList == NULL && h->freelist == NULL && isEmpty));
@@ -1822,11 +1818,11 @@ static void snapshot_gc_mark(KonohaContext *kctx, HeapManager *mng, KonohaStack 
 	MarkStack *mstack = &memlocal(kctx)->mstack;
 	KonohaStackRuntimeVar *stack = kctx->stack;
 	kObject *ref = NULL;
-	size_t ref_size = 0;
-	long i = 0;
+	size_t ref_size = stack->reftail - stack->ref.refhead;
+	long i = 0,count = 0;
 
-	while (i<MARK_MAX_COUNT) {
-		if (unlikely((ref = mstack_next(mstack)) == NULL)) {
+	while (count<MARK_MAX_COUNT) {
+		if ((ref = mstack_next(mstack)) == NULL) {
 			((KonohaContextVar *)kctx)->safepoint = GC_SWEEP;
 			return;
 		}
@@ -1839,7 +1835,7 @@ static void snapshot_gc_mark(KonohaContext *kctx, HeapManager *mng, KonohaStack 
 				mark_mstack(kctx, mng, stack->ref.refhead[i], mstack);
 			}
 		}
-		++i;
+		++count;
 	}
 }
 
@@ -1970,6 +1966,7 @@ static void snapshotGC(KonohaContext *kctx, HeapManager *mng, enum gc_mode mode)
 	DBG_P("GC starting");
 	switch(kctx->safepoint){
 		case GC_ROOT_SCAN:
+			printf("GC init\n");
 			bmgc_gc_init(kctx, mng, mode);
 			snapshot_root_scan(kctx, mng, kctx->esp, mode);
 			SET_GC_PHASE(GC_MARK);
@@ -1977,7 +1974,7 @@ static void snapshotGC(KonohaContext *kctx, HeapManager *mng, enum gc_mode mode)
 		case GC_MARK:
 			snapshot_gc_mark(kctx, mng, kctx->esp, mode);
 			break;
-		default:
+		case GC_SWEEP:
 			bmgc_gc_sweep(kctx, HeapManager(kctx));
 			bitmap_reset(&((KonohaContextVar*)kctx)->safepoint, 0);
 	}
@@ -2140,7 +2137,10 @@ static void kmodgc_free(KonohaContext *kctx, struct KonohaModule *baseh)
 static void Kgc_invoke(KonohaContext *kctx, KonohaStack *esp)
 {
 #ifdef USE_SNAPSHOT_GC
+	printf("before %ld\n",kctx->safepoint);
+	bitmap_set(&((KonohaContextVar *)kctx)->safepoint,0,kctx->safepoint == 0);
 	snapshotGC(kctx, HeapManager(kctx), GC_MINOR);
+	printf("after %ld\n",kctx->safepoint);
 #else
 	enum gc_mode mode = kctx->safepoint & 0x3;
 	mode = (mode == GC_NOP) ? mode : GC_MINOR;
