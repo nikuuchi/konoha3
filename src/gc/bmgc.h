@@ -38,7 +38,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+//#define GCDEBUG 1
 #if defined(GCDEBUG) && !defined(GCSTAT)
 #define GCSTAT 1
 #endif
@@ -55,7 +55,7 @@ extern "C" {
 #define SEGMENT_LEVEL 3
 #define MIN_ALIGN (1UL << SUBHEAP_KLASS_MIN)
 
-#ifdef USE_GENERATIONAL_GC
+#if defined(USE_GENERATIONAL_GC) || defined(USE_SNAPSHOT_GC)
 #define MINOR_COUNT 16
 #endif
 
@@ -228,7 +228,7 @@ typedef struct AllocationPointer {
 struct SubHeap {
 	AllocationPointer p;
 	int heap_klass;
-#ifdef USE_GENERATIONAL_GC
+#if defined(USE_GENERATIONAL_GC) || defined(USE_SNAPSHOT_GC)
 	int minor_count;
 #endif
 	Segment *freelist;
@@ -684,6 +684,15 @@ typedef struct kmemshare_t {
 #define memlocal(kctx) ((kmemlocal_t*)((kctx)->modlocal[MOD_gc]))
 #define memshare(kctx) ((kmemshare_t*)((kctx)->modshare[MOD_gc]))
 
+#ifdef USE_SNAPSHOT_GC
+#define GC_FLAG 0
+#define GC_ROOT_SCAN 1
+#define GC_MARK 2
+#define GC_SWEEP 3
+
+#define MARK_MAX_COUNT 4096
+#endif
+
 /* ------------------------------------------------------------------------ */
 
 static inline uint64_t getTimeMilliSecond(void)
@@ -1052,6 +1061,9 @@ static bool nextSegment(HeapManager *mng, SubHeap *h, AllocationPointer *p, Kono
 #ifdef USE_GENERATIONAL_GC
 	bitmap_set(&((KonohaContextVar*)kctx)->safepoint, GC_MINOR_FLAG,
 			(uintptr_t)((--h->minor_count) & (MINOR_COUNT-1)) == 0);
+#elif USE_SNAPSHOT_GC
+	bitmap_set(&((KonohaContextVar*)kctx)->safepoint, GC_FLAG,
+			(uintptr_t)((--h->minor_count) & (MINOR_COUNT-1)) == 0);
 #endif
 
 	if (newSegment(mng, h)) {
@@ -1174,8 +1186,14 @@ static void *tryAlloc(KonohaContext *kctx, HeapManager *mng, SubHeap *h)
 	prefetch_(temp, 0, 0);
 	bool isEmpty = inc(p, h);
 
+#ifdef USE_SNAPSHOT_GC
+//	if(/* TODO threshold*/) {
+//		((KonohaContextVar*)kctx)->safepoint = GC_ROOT_SCAN;
+//	}
+#else
 	bitmap_set(&((KonohaContextVar*)kctx)->safepoint, GC_MAJOR_FLAG,
 			(mng->segmentList == NULL && h->freelist == NULL && isEmpty));
+#endif
 	return temp;
 }
 
@@ -1184,7 +1202,7 @@ static bool Heap_init(HeapManager *mng, SubHeap *h, int klass)
 {
 	size_t i;
 
-#ifdef USE_GENERATIONAL_GC
+#if defined(USE_GENERATIONAL_GC) || defined(USE_SNAPSHOT_GC)
 	h->minor_count = MINOR_COUNT;
 #endif
 	h->heap_klass = klass;
@@ -1728,10 +1746,27 @@ static void Kwrite_barrier(KonohaContext *kctx, kObject *parent)
 {
 #ifdef USE_GENERATIONAL_GC
 	RememberSet_add(kctx, parent);
+#elif USE_SNAPSHOT_GC
+	Segment *seg;
+	int index, klass;
+	uintptr_t bpidx, bpmask;
+	OBJECT_LOAD_BLOCK_INFO(parent, seg, index, klass);
+	BITPTR_INIT_(bpidx, bpmask, index);
+	bitmap_t *bm  = SEG_BITMAP_N(seg, 0, bpidx);
+	prefetch_(SEG_BITMAP_N(seg, 1, 0), 1, 1);
+
+	DBG_ASSERT(DBG_CHECK_OBJECT_IN_SEGMENT(parent, seg));
+	DBG_ASSERT(DBG_CHECK_BITMAP(seg, bm));
+
+	if(kctx->safepoint == GC_MARK && !BM_TEST(*bm, bpmask)) {
+		mark_mstack(kctx, HeapManager(kctx), parent, &memlocal(kctx)->mstack); 
+	}
 #endif
 }
 
 #define context_reset_refs(kctx) kctx->stack->reftail = kctx->stack->ref.refhead
+
+#ifndef USE_SNAPSHOT_GC
 
 static void bmgc_gc_mark(KonohaContext *kctx, HeapManager *mng, KonohaStack *esp, enum gc_mode mode)
 {
@@ -1765,6 +1800,50 @@ static void bmgc_gc_mark(KonohaContext *kctx, HeapManager *mng, KonohaStack *esp
 #endif
 }
 
+#else
+
+static void snapshot_root_scan(KonohaContext *kctx, HeapManager *mng, KonohaStack *esp, enum gc_mode mode)
+{
+	MarkStack *mstack = mstack_init(kctx, &memlocal(kctx)->mstack);
+	KonohaStackRuntimeVar *stack = kctx->stack;
+
+	context_reset_refs(kctx);
+	KonohaContext_reftraceAll(kctx);
+	size_t ref_size = stack->reftail - stack->ref.refhead;
+	long i = ref_size - 1;
+
+	for (; i >= 0; --i) {
+		mark_mstack(kctx, mng, stack->ref.refhead[i], mstack);
+	}
+}
+
+static void snapshot_gc_mark(KonohaContext *kctx, HeapManager *mng, KonohaStack *esp, enum gc_mode mode)
+{
+	MarkStack *mstack = &memlocal(kctx)->mstack;
+	KonohaStackRuntimeVar *stack = kctx->stack;
+	kObject *ref = NULL;
+	size_t ref_size = 0;
+	long i = 0;
+
+	while (i<MARK_MAX_COUNT) {
+		if (unlikely((ref = mstack_next(mstack)) == NULL)) {
+			((KonohaContextVar *)kctx)->safepoint = GC_SWEEP;
+			return;
+		}
+
+		context_reset_refs(kctx);
+		KONOHA_reftraceObject(kctx, ref);
+		ref_size = stack->reftail - stack->ref.refhead;
+		if (ref_size > 0) {
+			for (i = ref_size-1; i >= 0; --i) {
+				mark_mstack(kctx, mng, stack->ref.refhead[i], mstack);
+			}
+		}
+		++i;
+	}
+}
+
+#endif /* USE_SNAPSHOT_GC */
 #if 0
 void *bm_malloc(KonohaContext *kctx, size_t n)
 {
@@ -1883,6 +1962,29 @@ static void bmgc_gc_sweep(KonohaContext *kctx, HeapManager *mng)
 	}
 }
 
+#ifdef USE_SNAPSHOT_GC
+#define SET_GC_PHASE(f) ((KonohaContextVar *)kctx)->safepoint = (f)
+
+static void snapshotGC(KonohaContext *kctx, HeapManager *mng, enum gc_mode mode)
+{
+	DBG_P("GC starting");
+	switch(kctx->safepoint){
+		case GC_ROOT_SCAN:
+			bmgc_gc_init(kctx, mng, mode);
+			snapshot_root_scan(kctx, mng, kctx->esp, mode);
+			SET_GC_PHASE(GC_MARK);
+			break;
+		case GC_MARK:
+			snapshot_gc_mark(kctx, mng, kctx->esp, mode);
+			break;
+		default:
+			bmgc_gc_sweep(kctx, HeapManager(kctx));
+			bitmap_reset(&((KonohaContextVar*)kctx)->safepoint, 0);
+	}
+}
+
+#else
+
 static void bitmapMarkingGC(KonohaContext *kctx, HeapManager *mng, enum gc_mode mode)
 {
 	DBG_P("GC starting");
@@ -1912,6 +2014,7 @@ static void bitmapMarkingGC(KonohaContext *kctx, HeapManager *mng, enum gc_mode 
 #endif
 	bitmap_reset(&((KonohaContextVar*)kctx)->safepoint, 0);
 }
+#endif /* USE_SNAPSHOT_GC */
 
 /* ------------------------------------------------------------------------ */
 
@@ -2036,16 +2139,24 @@ static void kmodgc_free(KonohaContext *kctx, struct KonohaModule *baseh)
 
 static void Kgc_invoke(KonohaContext *kctx, KonohaStack *esp)
 {
+#ifdef USE_SNAPSHOT_GC
+	snapshotGC(kctx, HeapManager(kctx), GC_MINOR);
+#else
 	enum gc_mode mode = kctx->safepoint & 0x3;
 	mode = (mode == GC_NOP) ? mode : GC_MINOR;
 	bitmapMarkingGC(kctx, HeapManager(kctx), mode);
+#endif
 }
 
 void MODGC_init(KonohaContext *kctx, KonohaContextVar *ctx)
 {
 	if (IS_RootKonohaContext(ctx)) {
 		kmemshare_t *base = (kmemshare_t*) do_malloc(sizeof(kmemshare_t));
+#ifdef USE_SNAPSHOT_GC
+		base->h.name     = "snapshotgc";
+#else
 		base->h.name     = "bmgc";
+#endif
 		base->h.setup    = kmodgc_setup;
 		base->h.reftrace = kmodgc_reftrace;
 		base->h.free     = kmodgc_free;
