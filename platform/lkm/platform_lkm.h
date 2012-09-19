@@ -16,6 +16,9 @@
 #include <linux/types.h>
 #include <linux/ctype.h>
 #include <linux/syslog.h>
+#include <linux/tty.h>
+#include <linux/sched.h>
+#include <linux/init.h>
 #include <asm/uaccess.h>
 
 #define KNH_EXT_QSORT  1

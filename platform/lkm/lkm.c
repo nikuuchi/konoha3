@@ -46,6 +46,11 @@ struct konohadev_t {
 static const char *msg = "konohadev";
 static struct konohadev_t *konohadev_p;
 
+// package
+KonohaPackageHandler* while_init(void);
+KonohaPackageHandler* break_init(void);
+KonohaPackageHandler* continue_init(void);
+
 static int knh_dev_open (struct inode *inode , struct file *filp);
 static ssize_t knh_dev_read(struct file *filp, char __user *user_buf,
 		size_t count, loff_t *offset);
@@ -104,12 +109,21 @@ static const char* kend(kinfotag_t t)
 {
 	return "";
 }
+static void hook_tty_console(const char *buffer,int mode)
+{
+	struct tty_struct *tty = current->signal->tty;
+	if(tty != NULL) {
+		((tty->ops)->write)(tty,buffer,strlen(buffer));
+		if(mode)((tty->ops)->write)(tty,"\r\n",2);
+	}
+}
 
 #define LKM_BUFFER_SIZE 256
 static int kvprintf_i(const char *fmt, va_list args)
 {
 	char buffer[LKM_BUFFER_SIZE] = {0};
 	vsnprintf(buffer,LKM_BUFFER_SIZE, fmt, args);
+	hook_tty_console(buffer,1);
 	strncat(konohadev_p->buffer,buffer,LKM_BUFFER_SIZE);
 	return 0;
 }
@@ -121,8 +135,37 @@ static int printf_(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(buffer,LKM_BUFFER_SIZE, fmt, ap);
 	va_end(ap);
+	hook_tty_console(buffer,0);
 	strncat(konohadev_p->buffer,buffer,LKM_BUFFER_SIZE);
 	return 0;
+}
+
+const char* lkmPackagePath(char *buf, size_t bufsiz, const char *packageName, const char *ext)
+{
+	return NULL;
+}
+
+struct lkm_package_t {
+	char *name;
+	KonohaPackageHandler* (*init)(void);
+};
+
+static struct lkm_package_t load_package[] = {
+	{ .name = "konoha.while", .init = while_init },
+	{ .name = "konoha.break", .init = break_init },
+	{ .name = "konoha.continue", .init = continue_init },
+	{ .name = "END", .init = NULL}
+};
+
+KonohaPackageHandler* lkmloadPackageHandler(const char *packageName)
+{
+	struct lkm_package_t *i;
+	printk(KERN_ALERT "%s\n",packageName);
+	for (i = load_package;i->init != NULL;i++) {
+		if(strncmp(packageName,i->name,256) == 0)
+			return i->init();
+	}
+	return NULL;
 }
 
 PlatformApi* platform_kernel(void)
@@ -135,10 +178,6 @@ PlatformApi* platform_kernel(void)
 		.setjmp_i      = setjmp,
 		.longjmp_i     = longjmp,
 		.shortFilePath = shortFilePath,
-		//.fopen_i     = fopen,
-		//.fgetc_i     = fgetc,
-		//.feof_i      = feof,
-		//.fclose_i    = fclose,
 		.syslog_i      = syslog,
 		.vsyslog_i     = NULL,
 		.printf_i      = printf_,
@@ -147,11 +186,11 @@ PlatformApi* platform_kernel(void)
 		.vsnprintf_i   = vsnprintf,
 		.qsort_i       = qsort,
 		.exit_i        = kexit,
-		//.packagepath = NULL,
-		//.exportpath  = NULL,
 		.beginTag      = kbegin,
 		.endTag        = kend,
-		.debugPrintf   = kdebugPrintf
+		.debugPrintf   = kdebugPrintf,
+		.formatPackagePath  = lkmPackagePath,
+		.loadPackageHandler = lkmloadPackageHandler
 	};
 	return (PlatformApi*)(&plat);
 }
@@ -186,6 +225,16 @@ static ssize_t knh_dev_write(struct file *filp,const char __user *user_buf,
 	return count;
 }
 
+/*
+void initPackageLoad(KonohaContext *kctx)
+{
+	struct lkm_package_t *i;
+	uintptr_t pline = 0;
+	for (i = load_package;i->init != NULL;i++) {
+		kpackage_t packageId = KLIB KpackageId(kctx, i->name, strlen(i->name), 0, _NEWID);
+	}
+}
+*/
 
 static void knh_dev_setup(struct konohadev_t *dev)
 {
@@ -206,6 +255,8 @@ static void knh_dev_setup(struct konohadev_t *dev)
 	if (err) {
 		printk(KERN_ALERT "%s:cdev_add() failed(%d)\n",msg,err);
 	}
+//	KonohaContextVar *kctx = (KonohaContextVar *)dev->konoha;
+//	initPackageLoad(dev->konoha);
 }
 
 // Start/Init function

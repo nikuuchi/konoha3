@@ -6,7 +6,10 @@ konohadev-objs := \
 	../../src/logger/logger.o\
 	../../src/vm/compiler.o\
 	qsort.o\
-	lkm.o
+	lkm.o\
+	../../package/konoha.while/while_glue.o\
+	../../package/konoha.break/break_glue.o\
+	../../package/konoha.continue/continue_glue.o
 
 
 KDIR  := /lib/modules/$(shell uname -r)/build
@@ -35,5 +38,7 @@ clean:
 	$(MAKE) -C $(KDIR) M=$(PWD) clean
 	rm -f ../../src/*/.*.o.cmd ../../src/*/*.o
 	rm -f ../../module/*/.*.o.cmd ../../module/*/*.o
+	rm -f ../../platform/*/.*.o.cmd ../../platform/*/*.o
+	rm -f ../../package/*/.*.o.cmd ../../package/*/*.o
 
 
