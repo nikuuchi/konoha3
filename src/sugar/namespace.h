@@ -85,7 +85,7 @@ static void kNameSpace_addSugarFunc(KonohaContext *kctx, kNameSpace *ns, ksymbol
 	SugarSyntaxVar *syn = (SugarSyntaxVar *)kNameSpace_getSyntax(kctx, ns, keyword, 1/*new*/);
 	DBG_ASSERT(idx < SUGARFUNC_SIZE);
 	if(syn->sugarFuncTable[idx] == NULL) {
-		KINITv(syn->sugarFuncTable[idx], funcObject);
+		KINITp(ns, syn->sugarFuncTable[idx], funcObject);
 		return;
 	}
 	if(IS_Func(syn->sugarFuncTable[idx])) {
@@ -126,7 +126,7 @@ static void kNameSpace_defineSyntax(KonohaContext *kctx, kNameSpace *ns, KDEFINE
 				syn->precedence_op2 = syndef->precedence_op2;
 			}
 			if(syndef->rule != NULL) {
-				KINITv(syn->syntaxRuleNULL, new_(TokenArray, 0));
+				KINITp(ns, syn->syntaxRuleNULL, new_(TokenArray, 0));
 				kNameSpace_parseSugarRule2(kctx, ns, syndef->rule, 0, syn->syntaxRuleNULL);
 			}
 			SugarSyntax_setSugarFunc(kctx, syn, syndef->PatternMatch,   SUGARFUNC_PatternMatch,   &pPatternMatch, &mPatternMatch);
@@ -139,12 +139,12 @@ static void kNameSpace_defineSyntax(KonohaContext *kctx, kNameSpace *ns, KDEFINE
 				if(syn->precedence_op2 > 0 || syn->precedence_op1 > 0) {
 					kFunc *fo = SYN_(ns, KW_ExprOperator)->sugarFuncTable[SUGARFUNC_ParseExpr];
 					DBG_ASSERT(fo != NULL);
-					KINITv(syn->sugarFuncTable[SUGARFUNC_ParseExpr], fo);
+					KINITp(ns, syn->sugarFuncTable[SUGARFUNC_ParseExpr], fo);
 				}
 				else if(syn->sugarFuncTable[SUGARFUNC_ExprTyCheck] != NULL) {
 					kFunc *fo = SYN_(ns, KW_ExprTerm)->sugarFuncTable[SUGARFUNC_ParseExpr];
 					DBG_ASSERT(fo != NULL);
-					KINITv(syn->sugarFuncTable[SUGARFUNC_ParseExpr], fo);
+					KINITp(ns, syn->sugarFuncTable[SUGARFUNC_ParseExpr], fo);
 				}
 			}
 			DBG_ASSERT(syn == SYN_(ns, syndef->keyword));
@@ -525,14 +525,14 @@ static int comprMethod(const void *a, const void *b)
 	return aid < bid ? -1 : 1;
 }
 
-static void kMethodList_matchMethod(KonohaContext *kctx, kArray *methodList, size_t *sorted, ktype_t typeId, MethodMatchFunc MatchMethod, MethodMatch *option)
+static void kMethodList_matchMethod(KonohaContext *kctx, kArray *methodList, const size_t *sorted, ktype_t typeId, MethodMatchFunc MatchMethod, MethodMatch *option)
 {
 	long i, min = 0, max = sorted[0];
 	long optkey = ((long)typeId << (sizeof(kshort_t)*8)) | option->mn;
 	if(kArray_size(methodList) - max > 8) {
 		max = kArray_size(methodList);
 		PLATAPI qsort_i(methodList->methodItems, max, sizeof(kMethod*), comprMethod);
-		sorted[0] = max;
+		((size_t*)sorted)[0] = max;
 	}
 	while(min < max) {
 		size_t p = (max + min) / 2;
@@ -578,13 +578,13 @@ static kMethod* kNameSpace_matchMethodNULL(KonohaContext *kctx, kNameSpace *star
 	while(ct != NULL) {
 		kNameSpace *ns = startNameSpace;
 		while(ns != NULL) {
-			kMethodList_matchMethod(kctx, ns->methodList, (size_t *) &ns->sortedConstTable, ct->typeId, MatchMethod, option);
+			kMethodList_matchMethod(kctx, ns->methodList, &ns->sortedMethodList, ct->typeId, MatchMethod, option);
 			if(option->isBreak) {
 				return option->foundMethodNULL;
 			}
 			ns = ns->parentNULL;
 		}
-		kMethodList_matchMethod(kctx, ct->methodList, (size_t *) &ct->sortedMethodList, ct->typeId, MatchMethod, option);
+		kMethodList_matchMethod(kctx, ct->methodList,  &ct->sortedMethodList, ct->typeId, MatchMethod, option);
 		if(option->isBreak) {
 			return option->foundMethodNULL;
 		}
@@ -593,18 +593,29 @@ static kMethod* kNameSpace_matchMethodNULL(KonohaContext *kctx, kNameSpace *star
 	return option->foundMethodNULL;
 }
 
-static kbool_t MethodMatch_StaticFunc(KonohaContext *kctx, kMethod *mtd, MethodMatch *m)
+//static kbool_t MethodMatch_StaticFunc(KonohaContext *kctx, kMethod *mtd, MethodMatch *m)
+//{
+//	if(Method_isStatic(mtd)) {
+//		if(m->foundMethodNULL != NULL) {
+//			if(m->foundMethodNULL->serialNumber > mtd->serialNumber) return false;
+//		}
+//		m->foundMethodNULL = mtd;
+//		m->isBreak = true;
+//		return true;
+//	}
+//	return true;
+//}
+
+static kbool_t MethodMatch_Func(KonohaContext *kctx, kMethod *mtd, MethodMatch *m)
 {
-	if(Method_isStatic(mtd)) {
-		if(m->foundMethodNULL != NULL) {
-			if(m->foundMethodNULL->serialNumber > mtd->serialNumber) return false;
-		}
-		m->foundMethodNULL = mtd;
-		m->isBreak = true;
-		return true;
+	if(m->foundMethodNULL != NULL) {
+		if(m->foundMethodNULL->serialNumber > mtd->serialNumber) return false;
 	}
+	m->foundMethodNULL = mtd;
+	m->isBreak = true;
 	return true;
 }
+
 
 static kbool_t MethodMatch_ParamSize(KonohaContext *kctx, kMethod *mtd, MethodMatch *m)
 {
@@ -688,11 +699,18 @@ static kbool_t MethodMatch_Signature(KonohaContext *kctx, kMethod *mtd, MethodMa
 	return false;
 }
 
-static kMethod* kNameSpace_getStaticFuncNULL(KonohaContext *kctx, kNameSpace *ns, ktype_t cid, ksymbol_t symbol)
+static kMethod* kNameSpace_getNameSpaceFuncNULL(KonohaContext *kctx, kNameSpace *ns, ksymbol_t symbol, ktype_t reqty)
 {
 	MethodMatch m = {};
 	m.mn = symbol;
-	return kNameSpace_matchMethodNULL(kctx, ns, cid, MethodMatch_StaticFunc, &m);
+	if(TY_isFunc(reqty)) {
+		m.paramdom = CT_(reqty)->cparamdom;
+		kNameSpace_matchMethodNULL(kctx, ns, O_typeId(ns), MethodMatch_Signature, &m);
+		if(m.foundMethodNULL != NULL) {
+			return m.foundMethodNULL;
+		}
+	}
+	return kNameSpace_matchMethodNULL(kctx, ns, O_typeId(ns), MethodMatch_Func, &m);
 }
 
 static ksymbol_t anotherSymbol(KonohaContext *kctx, ksymbol_t symbol)
@@ -905,7 +923,7 @@ static kbool_t kNameSpace_loadScript(KonohaContext *kctx, kNameSpace *ns, const 
 
 static kNameSpace* new_PackageNameSpace(KonohaContext *kctx, kpackage_t packageDomain, kpackage_t packageId)
 {
-	kNameSpaceVar *ns = GCSAFE_new(NameSpaceVar, KNULL(NameSpace));
+	kNameSpaceVar *ns = (kNameSpaceVar*)GCSAFE_new(NameSpace, KNULL(NameSpace));
 	ns->packageId = packageId;
 	ns->packageDomain = packageId;
 	return (kNameSpace*)ns;

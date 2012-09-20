@@ -143,6 +143,19 @@ struct KonohaPackageVar {
 	kfileline_t                  exportScriptUri;
 };
 
+// NameSpace_syntaxOption
+
+#define kNameSpace_TypeInference                     ((uintptr_t)(1<<0))
+#define kNameSpace_ImplicitField                     ((uintptr_t)(1<<1))
+#define kNameSpace_TransparentGlobalVariable         ((uintptr_t)(1<<2))
+
+#define kNameSpace_allowedTypeInference(ns)            (TFLAG_is(uintptr_t, (ns)->syntaxOption, kNameSpace_TypeInference))
+#define kNameSpace_setTypeInference(ns, B)             TFLAG_set(uintptr_t, (ns)->syntaxOption, kNameSpace_TypeInference, B)
+#define kNameSpace_allowedImplicitFieldAccess(ns)      1/*(TFLAG_is(uintptr_t, (ns)->syntaxOption, kNameSpace_ImplicitField))*/
+
+#define kNameSpace_allowedTransparentGlobalVariable(ns)   (TFLAG_is(uintptr_t, (ns)->syntaxOption, kNameSpace_TransparentGlobalVariable))
+#define kNameSpace_setTransparentGlobalVariable(ns, B)    TFLAG_set(uintptr_t, ((kNameSpaceVar*)ns)->syntaxOption, kNameSpace_TransparentGlobalVariable, B)
+
 // Tokenizer
 
 #define KCHAR_MAX  41
@@ -162,6 +175,9 @@ struct TokenizerEnv {
 	};
 	kString            *preparedString;
 };
+
+#define SIZEOF_TOKENMATRIX   (sizeof(void*) * KCHAR_MAX * 2)
+
 
 /******
 // ParseToken
@@ -277,34 +293,6 @@ typedef struct KDEFINE_SYNTAX {
 } KDEFINE_SYNTAX;
 
 #define new_SugarFunc(F)     new_(Func, KLIB new_kMethod(kctx, 0, 0, 0, F))
-
-#define SIZEOF_TOKENMATRIX (KCHAR_MAX * sizeof(TokenizeFunc) * 2)
-
-struct kNameSpaceVar {
-	KonohaObjectHeader h;
-	uintptr_t          syntaxOption;
-	kpackage_t packageId;  	kpackage_t packageDomain;
-	kNameSpace                        *parentNULL;
-	const TokenizeFunc                *tokenMatrix;
-	KUtilsHashMap                     *syntaxMapNN;
-
-	KUtilsGrowingArray                 constTable;        // const variable
-	size_t                             sortedConstTable;
-	kObject                           *globalObjectNULL;
-	kArray                            *methodList;   // default K_EMPTYARRAY
-};
-
-#define kNameSpace_TypeInference                     ((uintptr_t)(1<<0))
-#define kNameSpace_ImplicitField                     ((uintptr_t)(1<<1))
-#define kNameSpace_TransparentGlobalVariable            ((uintptr_t)(1<<2))
-
-#define kNameSpace_allowedTypeInference(ns)   (TFLAG_is(uintptr_t, (ns)->syntaxOption, kNameSpace_TypeInference))
-#define kNameSpace_setTypeInference(ns, B)    TFLAG_set(uintptr_t, (ns)->syntaxOption, kNameSpace_TypeInference, B)
-
-#define kNameSpace_allowedImplicitFieldAccess(ns)      1/*(TFLAG_is(uintptr_t, (ns)->syntaxOption, kNameSpace_ImplicitField))*/
-
-#define kNameSpace_allowedTransparentGlobalVariable(ns)   (TFLAG_is(uintptr_t, (ns)->syntaxOption, kNameSpace_TransparentGlobalVariable))
-#define kNameSpace_setTransparentGlobalVariable(ns, B)    TFLAG_set(uintptr_t, ((kNameSpaceVar*)ns)->syntaxOption, kNameSpace_TransparentGlobalVariable, B)
 
 /* Token */
 struct kTokenVar {
@@ -491,14 +479,12 @@ struct kGammaVar {
 #define CT_Expr         kmodsugar->cExpr
 #define CT_Stmt         kmodsugar->cStmt
 #define CT_Block        kmodsugar->cBlock
-#define CT_NameSpace    kmodsugar->cNameSpace
 #define CT_Gamma        kmodsugar->cGamma
 
 #define CT_TokenVar        kmodsugar->cToken
 #define CT_ExprVar         kmodsugar->cExpr
 #define CT_StmtVar         kmodsugar->cStmt
 #define CT_BlockVar        kmodsugar->cBlock
-#define CT_NameSpaceVar    kmodsugar->cNameSpace
 #define CT_GammaVar        kmodsugar->cGamma
 
 #define CT_TokenArray           kmodsugar->cTokenArray
@@ -527,7 +513,6 @@ typedef struct {
 	KonohaClass *cExpr;
 	KonohaClass *cStmt;
 	KonohaClass *cBlock;
-	KonohaClass *cNameSpace;
 	KonohaClass *cGamma;
 	KonohaClass *cTokenArray;
 
@@ -619,7 +604,6 @@ static kExpr* kExpr_setConstValue(KonohaContext *kctx, kExpr *expr, ktype_t ty, 
 static kExpr* kExpr_setUnboxConstValue(KonohaContext *kctx, kExpr *expr, ktype_t ty, uintptr_t unboxValue);
 static kExpr* kExpr_setVariable(KonohaContext *kctx, kExpr *expr, kGamma *gma, kexpr_t build, ktype_t ty, intptr_t index);
 
-#define TY_NameSpace                       kmodsugar->cNameSpace->typeId
 #define TY_Token                           kmodsugar->cToken->typeId
 #define TY_Stmt                            kmodsugar->cStmt->typeId
 #define TY_Block                           kmodsugar->cBlock->typeId
@@ -633,7 +617,6 @@ static kExpr* kExpr_setVariable(KonohaContext *kctx, kExpr *expr, kGamma *gma, k
 #else/*SUGAR_EXPORTS*/
 
 #define SUGAR        ((const KModuleSugar*)kmodsugar)->
-#define TY_NameSpace                         SUGAR cNameSpace->typeId
 #define TY_Token                             SUGAR cToken->typeId
 #define TY_Stmt                              SUGAR cStmt->typeId
 #define TY_Block                             SUGAR cBlock->typeId
