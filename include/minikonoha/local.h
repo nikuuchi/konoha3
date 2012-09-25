@@ -37,7 +37,6 @@ extern "C" {
 // These functions are local functions in minikonoha binary.
 // Don't call from packages directly   (kimio)
 
-kObjectVar** KONOHA_reftail(KonohaContext *kctx, size_t size);
 void KONOHA_reftraceObject(KonohaContext *kctx, kObject *o);  // called from MODGC
 void KONOHA_freeObjectField(KonohaContext *kctx, kObjectVar *o);       // callled from MODGC
 
@@ -48,8 +47,6 @@ void MODSUGAR_init(KonohaContext *kctx, KonohaContextVar *ctx);
 kstatus_t MODSUGAR_loadScript(KonohaContext *kctx, const char *path, size_t len, kfileline_t pline);
 kstatus_t MODSUGAR_eval(KonohaContext *kctx, const char *script, kfileline_t uline);
 
-void MODLOGGER_init(KonohaContext *kctx, KonohaContextVar *ctx);
-void MODLOGGER_free(KonohaContext *kctx, KonohaContextVar *ctx);
 void MODSUGAR_loadMethod(KonohaContext *kctx);
 
 #ifdef __cplusplus
