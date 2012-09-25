@@ -219,9 +219,12 @@ static kbool_t SugarSyntax_tyCheckStmt(KonohaContext *kctx, SugarSyntax *syn, kS
 				index = kArray_size(syn->sugarFuncListTable[SUGARFUNC_index]) - 1;
 			}
 			for(; index >= 0; index--) {
-				kbool_t result = callStmtTyCheckFunc(kctx, funcItems[index], &callCount, stmt, gma);
-				if(stmt->syn == NULL) return result;
-				if(stmt->build != TSTMT_UNDEFINED) return result;
+				/*kbool_t result =*/ callStmtTyCheckFunc(kctx, funcItems[index], &callCount, stmt, gma);
+				if(Stmt_isDone(stmt)) return true;
+				if(Stmt_isERR(stmt)) return false;
+				if(stmt->build != TSTMT_UNDEFINED) {
+					return true;
+				}
 			}
 		}
 		if(syn->parentSyntaxNULL == NULL) break;
@@ -373,7 +376,7 @@ static kstatus_t kBlock_genEvalCode(KonohaContext *kctx, kBlock *bk, kMethod *mt
 	GammaAllocaData newgma = {
 		.flag = kGamma_TopLevel,
 		.currentWorkingMethod = mtd,
-		.this_cid     = TY_System,
+		.this_cid     = TY_NameSpace,
 		.localScope.varItems = lvarItems, .localScope.capacity = 32, .localScope.varsize = 0, .localScope.allocsize = 0,
 	};
 	GAMMA_PUSH(gma, &newgma);

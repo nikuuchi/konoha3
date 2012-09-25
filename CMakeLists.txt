@@ -81,17 +81,6 @@ else(KONOHA_GC_MODULE)
 	set(GC src/gc/gc.c)
 endif(KONOHA_GC_MODULE)
 
-
-set(KONOHA_LOGGER_MODULE "" CACHE STRING "konoha logger module")
-if(KONOHA_LOGGER_MODULE)
-	if("${KONOHA_LOGGER_MODULE}" MATCHES "logpool")
-		set(LOGGER_MODULE_LIBS logpool)
-	endif()
-	set(LOGGER module/${KONOHA_LOGGER_MODULE}/${KONOHA_LOGGER_MODULE}.c)
-else(KONOHA_LOGGER_MODULE)
-	set(LOGGER src/logger/logger.c)
-endif(KONOHA_LOGGER_MODULE)
-
 set(PARSER
 	src/sugar/sugar.c
 )
@@ -144,7 +133,7 @@ set(PACKAGES
 	posix.process
 	posix.file
 	posix.fd
-##	posix.socket
+	posix.socket
 	posix.thread
 	dscript.dollar
 	dscript.subproc
@@ -173,6 +162,7 @@ SET(CMAKE_EXTRA_INCLUDE_FILES)
 
 check_include_files(dlfcn.h HAVE_DLFCN_H)
 check_include_files(iconv.h HAVE_ICONV_H)
+check_include_files(syslog.h HAVE_SYSLOG_H)
 
 set(_HEADERS stdio.h stdlib.h string.h ctype.h)
 if(UNIX)
@@ -225,10 +215,6 @@ if(HAVE_LIBDL)
 set(ExtraLibs ${ExtraLibs} ${HAVE_LIBDL})
 endif(HAVE_LIBDL)
 
-if(LOGGER_MODULE_LIBS)
-set(ExtraLibs ${ExtraLibs} ${LOGGER_MODULE_LIBS})
-endif(LOGGER_MODULE_LIBS)
-
 macro(POP _STR _DELIM _RESULT)
 	string(REPLACE ${_DELIM} ";" _tmp ${_STR})
 	list(REVERSE _tmp)
@@ -257,6 +243,7 @@ macro(add_test_with_property test_name)
 		"KONOHA_PACKAGEPATH=${PARENT_BINARY_DIR}/package")
 endmacro(add_test_with_property test_name)
 
+option(TEST_STRESS "Use Stress Test" OFF)
 macro(add_konoha_test test_name test_file)
 	if(test_name MATCHES "Stress")
 		if(TEST_STRESS)
@@ -280,7 +267,7 @@ foreach(f ${test_files})
 	add_konoha_test(${test_name} ${f})
 endforeach(f ${test_files})
 
-add_library(minikonoha SHARED ${RUNTIME} ${GC} ${LOGGER} ${PARSER} ${VM})
+add_library(minikonoha SHARED ${RUNTIME} ${GC} ${PARSER} ${VM})
 target_link_libraries(minikonoha ${ExtraLibs})
 set(ExtraLibs ${ExtraLibs} minikonoha)
 
