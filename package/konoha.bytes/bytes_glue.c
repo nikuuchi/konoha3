@@ -26,10 +26,13 @@
 #include <minikonoha/sugar.h>
 
 #include <stdio.h>
-#include <minikonoha/logger.h>
 #include <minikonoha/bytes.h>
 
 #include <errno.h> // include this because of E2BIG
+
+#ifdef __cplusplus
+extern "C"{
+#endif
 
 /* ------------------------------------------------------------------------ */
 
@@ -54,38 +57,32 @@ static void Bytes_free(KonohaContext *kctx, kObject *o)
 	}
 }
 
-static void Bytes_p(KonohaContext *kctx, KonohaStack *sfp, int pos, KUtilsWriteBuffer *wb, int level)
+static void Bytes_p(KonohaContext *kctx, KonohaValue *v, int pos, KUtilsWriteBuffer *wb)
 {
-	kBytes *ba = (kBytes*)sfp[pos].o;
-	DBG_P("level:%d", level);
-	if(level == 0) {
-		KLIB Kwb_printf(kctx, wb, "byte[%d]", ba->bytesize);
-	}
-	else if(level == 1) {
-		size_t i, j, n;
-		for(j = 0; j * 16 < ba->bytesize; j++) {
-			KLIB Kwb_printf(kctx, wb, "%08x", (int)(j*16));
-			for(i = 0; i < 16; i++) {
-				n = j * 16 + i;
-				if(n < ba->bytesize) {
-					KLIB Kwb_printf(kctx, wb, " %2x", (int)ba->utext[n]);
-				}
-				else {
-					KLIB Kwb_printf(kctx, wb, "%s", "   ");
-				}
+	kBytes *ba = (kBytes*)v[pos].o;
+	size_t i, j, n;
+	for(j = 0; j * 16 < ba->bytesize; j++) {
+		KLIB Kwb_printf(kctx, wb, "%08x", (int)(j*16));
+		for(i = 0; i < 16; i++) {
+			n = j * 16 + i;
+			if(n < ba->bytesize) {
+				KLIB Kwb_printf(kctx, wb, " %2x", (int)ba->utext[n]);
 			}
-			KLIB Kwb_printf(kctx, wb, "%s", "    ");
-			for(i = 0; i < 16; i++) {
-				n = j * 16 + i;
-				if(n < ba->bytesize && isprint(ba->utext[n])) {
-					KLIB Kwb_printf(kctx, wb, "%c", (int)ba->utext[n]);
-				}
-				else {
-					KLIB Kwb_printf(kctx, wb, "%s", " ");
-				}
+			else {
+				KLIB Kwb_printf(kctx, wb, "%s", "   ");
 			}
-			KLIB Kwb_printf(kctx, wb, "\n");
 		}
+		KLIB Kwb_printf(kctx, wb, "%s", "    ");
+		for(i = 0; i < 16; i++) {
+			n = j * 16 + i;
+			if(n < ba->bytesize && isprint(ba->utext[n])) {
+				KLIB Kwb_printf(kctx, wb, "%c", (int)ba->utext[n]);
+			}
+			else {
+				KLIB Kwb_printf(kctx, wb, "%s", " ");
+			}
+		}
+		KLIB Kwb_printf(kctx, wb, "\n");
 	}
 }
 
@@ -128,10 +125,10 @@ static kBytes* convFromTo(KonohaContext *kctx, kBytes *fromBa, const char *fromC
 	}
 	conv = (kiconv_t)PLATAPI iconv_open_i(toCoding, fromCoding);
 	if (conv == (kiconv_t)(-1)) {
-		ktrace(_UserInputFault,
-				KeyValue_s("@","iconv_open"),
-				KeyValue_s("from", fromCoding),
-				KeyValue_s("to", toCoding)
+		OLDTRACE_SWITCH_TO_KTrace(_UserInputFault,
+				LogText("@","iconv_open"),
+				LogText("from", fromCoding),
+				LogText("to", toCoding)
 		);
 		return KNULL(Bytes);
 	}
@@ -152,11 +149,11 @@ static kBytes* convFromTo(KonohaContext *kctx, kBytes *fromBa, const char *fromC
 			memset(convBuf, '\0', CONV_BUFSIZE);
 			outBytesLeft = CONV_BUFSIZE;
 		} else if (iconv_ret == -1) {
-			ktrace(_DataFault,
-				KeyValue_s("@","iconv"),
-				KeyValue_s("from", "UTF-8"),
-				KeyValue_s("to", toCoding),
-				KeyValue_s("error", strerror(errno))
+			OLDTRACE_SWITCH_TO_KTrace(_DataFault,
+				LogText("@","iconv"),
+				LogText("from", "UTF-8"),
+				LogText("to", toCoding),
+				LogText("error", strerror(errno))
 			);
 			KLIB Kwb_free(&wb);
 			return (kBytes*)(CT_Bytes->defaultValueAsNull);
@@ -395,3 +392,7 @@ KDEFINE_PACKAGE* bytes_init(void)
 	};
 	return &d;
 }
+#ifdef __cplusplus
+}
+#endif
+

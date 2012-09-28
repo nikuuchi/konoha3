@@ -33,7 +33,11 @@
 extern "C" {
 #endif
 
+#ifdef __GNUC__
 #define kinline __attribute__((unused))
+#else
+#define kinline
+#endif
 
 static kinline size_t size64(size_t s)
 {
@@ -66,8 +70,8 @@ static kinline kString* FileId_s_(KonohaContext *kctx, kfileline_t fileid)
 #define PackageId_t(X)    S_text(PackageId_s_(kctx, X))
 static kinline kString* PackageId_s_(KonohaContext *kctx, kpackage_t packageId)
 {
-	DBG_ASSERT(packageId < kArray_size(kctx->share->packList));
-	return kctx->share->packList->stringItems[packageId];
+	DBG_ASSERT(packageId < kArray_size(kctx->share->packageIdList));
+	return kctx->share->packageIdList->stringItems[packageId];
 }
 
 #define CT_s(X)   CT_s_(kctx, X)

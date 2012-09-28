@@ -238,13 +238,13 @@ static KMETHOD ParseExpr_DOLLAR(KonohaContext *kctx, KonohaStack *sfp)
 /* ------------------------------------------------------------------------ */
 /* Expression TyCheck */
 
-static kString *resolveEscapeSequence(KonohaContext *kctx, kString *s, size_t start)
+static kString *kToken_resolvedEscapeSequence(KonohaContext *kctx, kToken *tk, size_t start)
 {
-	const char *text = S_text(s) + start;
-	const char *end  = S_text(s) + S_size(s);
 	KUtilsWriteBuffer wb;
 	KLIB Kwb_init(&(kctx->stack->cwb), &wb);
-	KLIB Kwb_write(kctx, &wb, S_text(s), start);
+	const char *text = S_text(tk->text) + start;
+	const char *end  = S_text(tk->text) + S_size(tk->text);
+	KLIB Kwb_write(kctx, &wb, S_text(tk->text), start);
 	while (text < end) {
 		int ch = *text;
 		if(ch == '\\' && *(text+1) != '\0') {
@@ -262,12 +262,17 @@ static kString *resolveEscapeSequence(KonohaContext *kctx, kString *s, size_t st
 			case '"':  ch = '"';  text++; break;
 			case '\'': ch = '\''; text++; break;
 			case '\\': ch = '\\'; text++; break;
+			default:	return NULL;
 			}
 		}
-		kwb_putc(&wb, ch);
+		{
+			char buf[1] = {ch};
+			KLIB Kwb_write(kctx, &wb, (const char*)buf, 1);
+		}
 		text++;
 	}
-	s = KLIB new_kString(kctx, KLIB Kwb_top(kctx, &wb, 1), Kwb_bytesize(&wb), 0);
+	kString *s = KLIB new_kString(kctx, KLIB Kwb_top(kctx, &wb, 1), Kwb_bytesize(&wb), 0);
+	PUSH_GCSTACK(s);
 	KLIB Kwb_free(&wb);
 	return s;
 }
@@ -277,12 +282,12 @@ static KMETHOD ExprTyCheck_Text(KonohaContext *kctx, KonohaStack *sfp)
 	VAR_ExprTyCheck(stmt, expr, gma, reqty);
 	kToken *tk = expr->termToken;
 	kString *text = tk->text;
-	size_t i, size = S_size(text);
-	for(i = 0; i < size; i++) {
-		int ch = text->buf[i];
-		if(ch == '\\') {
-			text = resolveEscapeSequence(kctx, text, i);
-			break;
+	if(kToken_is(RequiredReformat, tk)) {
+		const char *escape = strchr(S_text(text), '\\');
+		DBG_ASSERT(escape != NULL);
+		text = kToken_resolvedEscapeSequence(kctx, tk, escape - S_text(text));
+		if(text == NULL) {
+			RETURN_(ERROR_UndefinedEscapeSequence(kctx, stmt, tk));
 		}
 	}
 	RETURN_(SUGAR kExpr_setConstValue(kctx, expr, TY_String, UPCAST(text)));
@@ -354,9 +359,9 @@ static KMETHOD ExprTyCheck_assign(KonohaContext *kctx, KonohaStack *sfp)
 			DBG_ASSERT(IS_Method(mtd));
 			if(MN_isGETTER(mtd->mn)) {
 				ktype_t cid = leftHandExpr->cons->exprItems[1]->ty;
-				ktype_t paramType = leftHandExpr->ty; //CT_(cid)->realtype(kctx, CT_(cid), CT_(leftHandExpr->ty));
+				ktype_t paramType = leftHandExpr->ty;
 				ksymbol_t sym = SYM_UNMASK(mtd->mn);
-				kMethod *foundMethod = KLIB kNameSpace_getSetterMethodNULL(kctx, ns, cid, sym, paramType);
+				kMethod *foundMethod = KLIB kNameSpace_getSetterMethodNULL(kctx, ns, cid, sym, paramType);  // FIXME
 				if(foundMethod != NULL) {
 					KSETv(leftHandExpr->cons, leftHandExpr->cons->methodItems[0], foundMethod);
 					KLIB kArray_add(kctx, leftHandExpr->cons, rightHandExpr);
@@ -438,7 +443,7 @@ static KMETHOD ExprTyCheck_Block(KonohaContext *kctx, KonohaStack *sfp)
 			}
 		}
 		if(texpr == K_NULLEXPR) {
-			kStmt_errline(stmt, uline);
+			((kStmtVar*)stmt)->uline = uline;
 			kStmt_printMessage(kctx, stmt, ErrTag, "block has no value");
 		}
 		RETURN_(texpr);
@@ -451,14 +456,6 @@ static kExpr* new_GetterExpr(KonohaContext *kctx, kToken *tkU, kMethod *mtd, kEx
 	kExprVar *expr1 = (kExprVar *)new_TypedConsExpr(kctx, TEXPR_CALL, Method_returnType(mtd), 2, mtd, expr);
 	//KSETv(expr1->tk, tkU); // for uline
 	return (kExpr*)expr1;
-}
-
-static kObject *kNameSpace_getSymbolValueNULL(KonohaContext *kctx, kNameSpace *ns, const char *key, size_t klen)
-{
-	if(key[0] == 'K' && (key[1] == 0 || strcmp("Konoha", key) == 0)) {
-		return (kObject*)ns;
-	}
-	return NULL;
 }
 
 static kExpr* kStmt_tyCheckVariableNULL(KonohaContext *kctx, kStmt *stmt, kExpr *expr, kGamma *gma, ktype_t reqty)
@@ -517,10 +514,6 @@ static kExpr* kStmt_tyCheckVariableNULL(KonohaContext *kctx, kStmt *stmt, kExpr 
 			}
 			return expr;
 		}
-	}
-	kObject *v = kNameSpace_getSymbolValueNULL(kctx, ns, S_text(tk->text), S_size(tk->text));
-	if(v != NULL) {
-		return SUGAR kExpr_setConstValue(kctx, expr, O_typeId(v), v);
 	}
 	return NULL;
 }

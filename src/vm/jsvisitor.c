@@ -3,6 +3,10 @@
 #ifdef USE_JS_VISITOR
 #define DUMPER(BUILDER)  ((JSVisitorLocal*)(BUILDER)->local_fields)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define MN_isNotNull MN_("isNotNull")
 #define MN_isNull    MN_("isNull")
 #define MN_get    MN_("get")
@@ -281,7 +285,7 @@ static void JSVisitor_init(KonohaContext *kctx, struct IRBuilder *builder, kMeth
 	}
 	for (i = 0; i < pa->psize; i++) {
 		if (i != 0) {
-			KLIB Kwb_putc(kctx, &wb, ',', ' ', -1);
+			KLIB Kwb_putc(kctx, &wb, ", ", 2);
 		}
 		KLIB Kwb_printf(kctx, &wb, "%s", SYM_t(pa->paramtypeItems[i].fn));
 	}
@@ -310,4 +314,9 @@ static IRBuilder *createJSVisitor(IRBuilder *builder)
 	return builder;
 }
 
+#ifdef __cplusplus
+}
 #endif
+
+#endif
+

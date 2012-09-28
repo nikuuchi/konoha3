@@ -109,39 +109,7 @@ extern "C" {
 #define FN_this      FN_("this")
 #define KW_MethodDeclPattern    (((ksymbol_t)KW_return)|KW_PATTERN) /*$Method*/
 
-#define kflag_clear(flag)  (flag) = 0
-#define K_CHECKSUM 1
-
-#define KPACKNAME(N, V) \
-	.name = N, .version = V, .konoha_checksum = K_CHECKSUM, .konoha_revision = K_REVISION
-
-#define KPACKLIB(N, V) \
-	.libname = N, .libversion = V
-
-typedef enum {  Nope, FirstTime } isFirstTime_t;
-
-struct KonohaPackageHandlerVar {
-	int konoha_checksum;
-	const char *name;
-	const char *version;
-	const char *libname;
-	const char *libversion;
-	const char *note;
-	kbool_t (*initPackage)   (KonohaContext *kctx, kNameSpace *, int, const char**, kfileline_t);
-	kbool_t (*setupPackage)  (KonohaContext *kctx, kNameSpace *, isFirstTime_t, kfileline_t);
-	kbool_t (*initNameSpace) (KonohaContext *kctx, kNameSpace *, kNameSpace *, kfileline_t);
-	kbool_t (*setupNameSpace)(KonohaContext *kctx, kNameSpace *, kNameSpace *, kfileline_t);
-	int konoha_revision;
-};
-
-typedef struct KonohaPackageVar KonohaPackage;
-
-struct KonohaPackageVar {
-	kpackage_t                   packageId;
-	kNameSpace                  *packageNameSpace;
-	KonohaPackageHandler        *packageHandler;
-	kfileline_t                  exportScriptUri;
-};
+//#define kflag_clear(flag)  (flag) = 0
 
 // NameSpace_syntaxOption
 
@@ -245,7 +213,6 @@ struct SugarSyntaxVar {
 	int lastLoadedPackageId;
 };
 
-
 #define PatternMatch_(NAME)    .PatternMatch   = PatternMatch_##NAME
 #define ParseExpr_(NAME)       .ParseExpr      = ParseExpr_##NAME
 #define TopStmtTyCheck_(NAME)  .TopStmtTyCheck = StmtTyCheck_##NAME
@@ -319,8 +286,12 @@ struct kTokenVar {
 //#define Token_isRule(o)      (TFLAG_is(uintptr_t,(o)->h.magicflag,kObject_Local1))
 //#define Token_setRule(o,B)   TFLAG_set(uintptr_t,(o)->h.magicflag,kObject_Local1,B)
 
+#define kTokenFlag_RequiredReformat    kObject_Local1
+#define kTokenFlag_BeforeWhiteSpace    kObject_Local2
+#define kToken_is(P, o)      (TFLAG_is(uintptr_t,(o)->h.magicflag, kTokenFlag_ ##P))
+#define kToken_set(P,o,B)    TFLAG_set(uintptr_t,(o)->h.magicflag, kTokenFlag_##P, B)
+
 #define Token_isBeforeWhiteSpace(o)      (TFLAG_is(uintptr_t,(o)->h.magicflag,kObject_Local2))
-#define Token_setBeforeWhiteSpace(o,B)   TFLAG_set(uintptr_t,(o)->h.magicflag,kObject_Local2,B)
 
 
 typedef struct TokenRange {
@@ -352,21 +323,46 @@ typedef kbool_t (*CheckEndOfStmtFunc2)(KonohaContext *, TokenRange *range, Token
 #define Token_isVirtualTypeLiteral(TK)     ((TK)->resolvedSyntaxInfo->keyword == KW_TypePattern)
 #define Token_typeLiteral(TK)              (TK)->resolvedTypeId
 
+typedef enum {
+	TEXPR_CONST,
+	TEXPR_NEW,
+	TEXPR_NULL,
+	TEXPR_NCONST,
+	TEXPR_LOCAL,
+	TEXPR_BLOCK,
+	TEXPR_FIELD,
+	TEXPR_CALL,
+	TEXPR_AND,
+	TEXPR_OR,
+	TEXPR_LET,
+	TEXPR_STACKTOP,
+
+	TSTMT_EXPR,
+	TSTMT_BLOCK,
+	TSTMT_RETURN,
+	TSTMT_IF,
+	TSTMT_LOOP,
+	TSTMT_JUMP,
+	TSTMT_TRY,
+
+	TSTMT_ERR   // this must be last
+} kvisit_t;
+
 #define TEXPR_UNTYPED       -1   /*THIS MUST NOT HAPPEN*/
-#define TEXPR_CONST          0
-#define TEXPR_NEW            1
-#define TEXPR_NULL           2
-#define TEXPR_NCONST         3
-#define TEXPR_LOCAL          4/*variable*/
-#define TEXPR_BLOCK          5
-#define TEXPR_FIELD          6/*variable*/
-//#define TEXPR_BOX            7
-//#define TEXPR_UNBOX          8
-#define TEXPR_CALL           7
-#define TEXPR_AND            8
-#define TEXPR_OR             9
-#define TEXPR_LET           10
-#define TEXPR_STACKTOP      11
+//#define TEXPR_CONST          0
+//#define TEXPR_NEW            1
+//#define TEXPR_NULL           2
+//#define TEXPR_NCONST         3
+//#define TEXPR_LOCAL          4/*variable*/
+//#define TEXPR_BLOCK          5
+//#define TEXPR_FIELD          6/*variable*/
+////#define TEXPR_BOX            7
+////#define TEXPR_UNBOX          8
+//#define TEXPR_CALL           7
+//#define TEXPR_AND            8
+//#define TEXPR_OR             9
+//#define TEXPR_LET           10
+//#define TEXPR_STACKTOP      11
 #define TEXPR_MAX           12
 
 #define Expr_isCONST(o)     (TEXPR_CONST <= (o)->build && (o)->build <= TEXPR_NCONST)
@@ -397,14 +393,14 @@ struct kExprVar {
 };
 
 #define TSTMT_UNDEFINED      0
-#define TSTMT_ERR            1
-#define TSTMT_EXPR           2
-#define TSTMT_BLOCK          3
-#define TSTMT_RETURN         4
-#define TSTMT_IF             5
-#define TSTMT_LOOP           6
-#define TSTMT_JUMP           7
-#define TSTMT_TRY            8
+//#define TSTMT_ERR            1
+//#define TSTMT_EXPR           2
+//#define TSTMT_BLOCK          3
+//#define TSTMT_RETURN         4
+//#define TSTMT_IF             5
+//#define TSTMT_LOOP           6
+//#define TSTMT_JUMP           7
+//#define TSTMT_TRY            8
 
 struct kStmtVar {
 	KonohaObjectHeader h;
@@ -516,9 +512,6 @@ typedef struct {
 	KonohaClass *cGamma;
 	KonohaClass *cTokenArray;
 
-	kArray          *packageList;
-	KUtilsHashMap   *packageMapNO;
-
 	TokenRange* (*new_TokenListRange)(KonohaContext *, kNameSpace *ns, kArray *tokenList, TokenRange *bufRange);
 	TokenRange* (*new_TokenStackRange)(KonohaContext *, TokenRange *range, TokenRange *bufRange);
 	void        (*kNameSpace_setTokenizeFunc)(KonohaContext *, kNameSpace *, int ch, TokenizeFunc, kFunc *, int isAddition);
@@ -582,7 +575,7 @@ typedef struct {
 	KUtilsGrowingArray errorMessageBuffer;
 	kArray            *errorMessageList;
 	int                errorMessageCount;
-	kbool_t            isBlockingErrorMessage;
+	kbool_t            isBlockedErrorMessage;
 	kGamma            *preparedGamma;
 	kArray            *definedMethodList;
 } SugarContext;

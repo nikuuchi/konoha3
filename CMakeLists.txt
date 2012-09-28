@@ -57,9 +57,15 @@ endif(USE_X86_32)
 
 SET(CMAKE_C_FLAGS         "-Wall ${KONOHA_CFLAGS}")
 SET(CMAKE_CXX_FLAGS       "-Wall ${KONOHA_CFLAGS}")
-SET(CMAKE_C_FLAGS_RELEASE      "-Wall -O3 -g")
-SET(CMAKE_C_FLAGS_DEBUG        "-O0 -g3")
-SET(CMAKE_C_FLAGS_COMPRESSED   "-Os -g0")
+if(MSVC)
+	SET(CMAKE_C_FLAGS_RELEASE      "/D NDEBUG /W3 /Wall /TP /MT /Ox /Ob2 /GL")
+	SET(CMAKE_C_FLAGS_DEBUG        "/D_DEBUG /W3 /Wall /TP /MTd /Zi /Ob0 /Od /RTC1")
+	SET(CMAKE_C_FLAGS_COMPRESSED   "/D NDEBUG /W3 /Wall /TP /MT /Ox /GL")
+else(MSVC)
+	SET(CMAKE_C_FLAGS_RELEASE      "-Wall -O3 -g")
+	SET(CMAKE_C_FLAGS_DEBUG        "-O0 -g3")
+	SET(CMAKE_C_FLAGS_COMPRESSED   "-Os -g0")
+endif(MSVC)
 SET(CMAKE_CXX_FLAGS_RELEASE    "${CMAKE_C_FLAGS_RELEASE}")
 SET(CMAKE_CXX_FLAGS_DEBUG      "${CMAKE_C_FLAGS_DEBUG}")
 SET(CMAKE_CXX_FLAGS_COMPRESSED "${CMAKE_C_FLAGS_COMPRESSED}")
@@ -80,17 +86,6 @@ if(KONOHA_GC_MODULE)
 else(KONOHA_GC_MODULE)
 	set(GC src/gc/gc.c)
 endif(KONOHA_GC_MODULE)
-
-
-set(KONOHA_LOGGER_MODULE "" CACHE STRING "konoha logger module")
-if(KONOHA_LOGGER_MODULE)
-	if("${KONOHA_LOGGER_MODULE}" MATCHES "logpool")
-		set(LOGGER_MODULE_LIBS logpool)
-	endif()
-	set(LOGGER module/${KONOHA_LOGGER_MODULE}/${KONOHA_LOGGER_MODULE}.c)
-else(KONOHA_LOGGER_MODULE)
-	set(LOGGER src/logger/logger.c)
-endif(KONOHA_LOGGER_MODULE)
 
 set(PARSER
 	src/sugar/sugar.c
@@ -144,10 +139,11 @@ set(PACKAGES
 	posix.process
 	posix.file
 	posix.fd
-##	posix.socket
+	posix.socket
 	posix.thread
 	dscript.dollar
 	dscript.subproc
+	dscript.shell
 	curl
 ##	ijit
 ##	jansson
@@ -174,6 +170,7 @@ SET(CMAKE_EXTRA_INCLUDE_FILES)
 check_include_files(dlfcn.h HAVE_DLFCN_H)
 check_include_files(iconv.h HAVE_ICONV_H)
 check_include_files(syslog.h HAVE_SYSLOG_H)
+check_include_files(stdbool.h HAVE_STDBOOL_H)
 
 set(_HEADERS stdio.h stdlib.h string.h ctype.h)
 if(UNIX)
@@ -193,6 +190,7 @@ endif(MSVC)
 check_symbol_exists(posix_memalign "${_HEADERS}" HAVE_POSIX_MEMALIGN)
 check_symbol_exists(memalign       "${_HEADERS}" HAVE_MEMALIGN)
 check_symbol_exists(__builtin_ctzl "${_HEADERS}" HAVE_BUILTIN_CTZL)
+check_symbol_exists(bzero "${_HEADERS}" HAVE_BZERO)
 
 FIND_FILE(HAS_DOTGIT .git PATHS "${CMAKE_CURRENT_SOURCE_DIR}")
 if("${HAS_DOTGIT}" MATCHES ".git")
@@ -225,10 +223,6 @@ set(ExtraLibs)
 if(HAVE_LIBDL)
 set(ExtraLibs ${ExtraLibs} ${HAVE_LIBDL})
 endif(HAVE_LIBDL)
-
-if(LOGGER_MODULE_LIBS)
-set(ExtraLibs ${ExtraLibs} ${LOGGER_MODULE_LIBS})
-endif(LOGGER_MODULE_LIBS)
 
 macro(POP _STR _DELIM _RESULT)
 	string(REPLACE ${_DELIM} ";" _tmp ${_STR})
@@ -282,11 +276,17 @@ foreach(f ${test_files})
 	add_konoha_test(${test_name} ${f})
 endforeach(f ${test_files})
 
-add_library(minikonoha SHARED ${RUNTIME} ${GC} ${LOGGER} ${PARSER} ${VM})
+add_library(minikonoha SHARED ${RUNTIME} ${GC} ${PARSER} ${VM})
+if(MSVC)
+	set_target_properties (minikonoha PROPERTIES LINKER_LANGUAGE CXX )
+endif(MSVC)
 target_link_libraries(minikonoha ${ExtraLibs})
 set(ExtraLibs ${ExtraLibs} minikonoha)
 
 add_executable(minikonoha_bin platform/shell/command.c)
+if(MSVC)
+	set_target_properties (minikonoha_bin PROPERTIES LINKER_LANGUAGE CXX )
+endif(MSVC)
 target_link_libraries(minikonoha_bin ${ExtraLibs})
 set_target_properties(minikonoha_bin PROPERTIES OUTPUT_NAME minikonoha)
 
@@ -332,6 +332,9 @@ macro(create_package_project _PKGNAME)
 	list(LENGTH PACKAGE_SOURCE_CODE LEN)
 	if(${LEN} GREATER 0)
 		add_library(${LIB} SHARED ${PACKAGE_SOURCE_CODE})
+		if(MSVC)
+			set_target_properties (${LIB} PROPERTIES LINKER_LANGUAGE CXX )
+		endif(MSVC)
 		set_target_properties(${LIB} PROPERTIES PREFIX "")
 		if(PACKAGE_EXTRA_LIBRARY)
 		target_link_libraries(${LIB} ${PACKAGE_EXTRA_LIBRARY})
@@ -370,6 +373,9 @@ endforeach()
 
 macro(add_clib_test test_name)
 	add_executable(${test_name} ${ARGN})
+	if(MSVC)
+		set_target_properties (${test_name} PROPERTIES LINKER_LANGUAGE CXX )
+	endif(MSVC)
 	target_link_libraries(${test_name} ${ExtraLibs})
 	add_test(Clib/Release/${test_name} ${test_name})
 	set_tests_properties(Clib/Release/${test_name} PROPERTIES TIMEOUT 5)
@@ -417,6 +423,7 @@ endforeach(f ${test_files})
 
 add_subdirectory(platform/dse)
 add_subdirectory(platform/apache)
+add_subdirectory(platform/logger-shell)
 
 # for konoha command
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/platform/shell/konoha.sh.cmake

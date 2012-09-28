@@ -26,6 +26,10 @@
 #include <minikonoha/sugar.h>
 #include <stdio.h>
 
+#ifdef __cplusplus
+extern "C"{
+#endif
+
 static KMETHOD StmtTyCheck_import(KonohaContext *kctx, KonohaStack *sfp)
 {
 	int ret = false;
@@ -51,7 +55,7 @@ static KMETHOD StmtTyCheck_import(KonohaContext *kctx, KonohaStack *sfp)
 				}
 			}
 			KLIB Kwb_write(kctx, &wb, S_text(tk->text), S_size(tk->text));
-			kwb_putc(&wb, '.');
+			KLIB Kwb_write(kctx, &wb, ".", 1);
 		}
 	}
 	kString *name = tokenList->tokenItems[i]->text;
@@ -109,3 +113,7 @@ KDEFINE_PACKAGE* import_init(void)
 	};
 	return &d;
 }
+#ifdef __cplusplus
+}
+#endif
+
