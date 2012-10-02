@@ -25,10 +25,6 @@
 #ifndef PLATFORM_POSIX_H_
 #define PLATFORM_POSIX_H_
 
-#ifndef MINIOKNOHA_H_
-#error Do not include platform_posix.h without minikonoha.h.
-#endif
-
 /* platform configuration */
 
 #ifndef K_OSDLLEXT
@@ -36,8 +32,6 @@
 #define K_OSDLLEXT        ".dylib"
 #elif defined(__linux__)
 #define K_OSDLLEXT        ".so"
-#elif defined(__MINGW32__)
-#define K_OSDLLEXT        ".dll"
 #endif
 #endif
 
@@ -377,7 +371,7 @@ static const char* formatPackagePath(char *buf, size_t bufsiz, const char *packa
 		fclose(fp);
 		return (const char*)buf;
 	}
-	snprintf(buf, bufsiz, K_PREFIX "/minikonoha/package" "/%s/%s%s", packageName, packname(packageName), ext);
+	snprintf(buf, bufsiz, K_PREFIX "/lib/minikonoha/" K_VERSION "/package" "/%s/%s%s", packageName, packname(packageName), ext);
 #endif
 	fp = fopen(buf, "r");
 	if(fp != NULL) {
@@ -476,13 +470,6 @@ static void NOP_debugPrintf(const char *file, const char *func, int line, const 
 
 static void PlatformApi_loadReadline(PlatformApiVar *plat)
 {
-//#ifdef __MINGW32__
-//	void *handler = (void *)LoadLibraryA((LPCTSTR)"libreadline" K_OSDLLEXT);
-//	void *f = (handler != NULL) ? (void *)GetProcAddress(handler, "readline") : NULL;
-//	kreadline = (f != NULL) ? (char* (*)(const char*))f : readline;
-//	f = (handler != NULL) ? (void *)GetProcAddress(handler, "add_history") : NULL;
-//	kadd_history = (f != NULL) ? (int (*)(const char*))f : add_history;
-//#else
 	void *handler = dlopen("libreadline" K_OSDLLEXT, RTLD_LAZY);
 	if(handler != NULL) {
 		plat->readline_i = (char* (*)(const char*))dlsym(handler, "readline");
@@ -512,6 +499,10 @@ static void traceDataLog(void *logger, int logkey, logconf_t *logconf, ...)
 		fprintf(stderr, "TRACE %s\n", buf);
 	}
 	va_end(ap);
+}
+
+static void diagnosis(void)
+{
 }
 
 static PlatformApi* KonohaUtils_getDefaultPlatformApi(void)
@@ -566,6 +557,7 @@ static PlatformApi* KonohaUtils_getDefaultPlatformApi(void)
 	plat.vsyslog_i           = vsyslog;
 	plat.logger              = NULL;
 	plat.traceDataLog        = traceDataLog;
+	plat.diagnosis           = diagnosis;
 	return (PlatformApi*)(&plat);
 }
 

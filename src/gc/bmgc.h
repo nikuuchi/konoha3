@@ -24,7 +24,11 @@
 
 /* ************************************************************************ */
 
+#ifdef HAVE_STDBOOL_H
 #include <stdbool.h>
+#else
+#include "minikonoha/stdbool.h"
+#endif
 #include <stdio.h>
 #include <sys/time.h>
 
@@ -831,6 +835,7 @@ static void* Kmalloc(KonohaContext *kctx, size_t s)
 //			LogUint("size", s),
 //			LogUint("malloced_size", klib_malloced)
 //		);
+		THROW_OutOfMemory(kctx, s);
 	}
 #if GCDEBUG
 	OLDTRACE_SWITCH_TO_KTrace(LOGPOL_DEBUG,
@@ -854,6 +859,9 @@ static void* Kzmalloc(KonohaContext *kctx, size_t s)
 			+ sizeof(size_t)
 #endif
 			);
+	if (unlikely(p == NULL)) {
+		THROW_OutOfMemory(kctx, s);
+	}
 	klib_malloced += s;
 #ifdef MEMORY_DEBUG
 	p[0] = s;
@@ -2171,10 +2179,6 @@ void MODGC_init(KonohaContext *kctx, KonohaContextVar *ctx)
 				&& "Minimum size of Object may lager than sizeof BlockHeader");
 	}
 	kmodgc_setup(ctx, (KonohaModule*) memshare(kctx), 1);
-}
-
-void MODGC_destoryAllObjects(KonohaContext *kctx, KonohaContextVar *ctx)
-{
 }
 
 void MODGC_free(KonohaContext *kctx, KonohaContextVar *ctx)

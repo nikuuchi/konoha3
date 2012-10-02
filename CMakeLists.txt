@@ -57,9 +57,15 @@ endif(USE_X86_32)
 
 SET(CMAKE_C_FLAGS         "-Wall ${KONOHA_CFLAGS}")
 SET(CMAKE_CXX_FLAGS       "-Wall ${KONOHA_CFLAGS}")
-SET(CMAKE_C_FLAGS_RELEASE      "-Wall -O3 -g")
-SET(CMAKE_C_FLAGS_DEBUG        "-O0 -g3")
-SET(CMAKE_C_FLAGS_COMPRESSED   "-Os -g0")
+if(MSVC)
+	SET(CMAKE_C_FLAGS_RELEASE      "/D NDEBUG /W3 /Wall /TP /MT /Ox /Ob2 /GL")
+	SET(CMAKE_C_FLAGS_DEBUG        "/D_DEBUG /W3 /Wall /TP /MTd /Zi /Ob0 /Od /RTC1")
+	SET(CMAKE_C_FLAGS_COMPRESSED   "/D NDEBUG /W3 /Wall /TP /MT /Ox /GL")
+else(MSVC)
+	SET(CMAKE_C_FLAGS_RELEASE      "-Wall -O3 -g")
+	SET(CMAKE_C_FLAGS_DEBUG        "-O0 -g3")
+	SET(CMAKE_C_FLAGS_COMPRESSED   "-Os -g0")
+endif(MSVC)
 SET(CMAKE_CXX_FLAGS_RELEASE    "${CMAKE_C_FLAGS_RELEASE}")
 SET(CMAKE_CXX_FLAGS_DEBUG      "${CMAKE_C_FLAGS_DEBUG}")
 SET(CMAKE_CXX_FLAGS_COMPRESSED "${CMAKE_C_FLAGS_COMPRESSED}")
@@ -137,6 +143,7 @@ set(PACKAGES
 	posix.thread
 	dscript.dollar
 	dscript.subproc
+	dscript.shell
 	curl
 ##	ijit
 ##	jansson
@@ -144,7 +151,7 @@ set(PACKAGES
 	python
 	apache
 #	openssl
-	logpool
+#	logpool
 )
 
 find_library(HAVE_LIBDL NAMES dl)
@@ -163,6 +170,7 @@ SET(CMAKE_EXTRA_INCLUDE_FILES)
 check_include_files(dlfcn.h HAVE_DLFCN_H)
 check_include_files(iconv.h HAVE_ICONV_H)
 check_include_files(syslog.h HAVE_SYSLOG_H)
+check_include_files(stdbool.h HAVE_STDBOOL_H)
 
 set(_HEADERS stdio.h stdlib.h string.h ctype.h)
 if(UNIX)
@@ -182,28 +190,23 @@ endif(MSVC)
 check_symbol_exists(posix_memalign "${_HEADERS}" HAVE_POSIX_MEMALIGN)
 check_symbol_exists(memalign       "${_HEADERS}" HAVE_MEMALIGN)
 check_symbol_exists(__builtin_ctzl "${_HEADERS}" HAVE_BUILTIN_CTZL)
+check_symbol_exists(bzero "${_HEADERS}" HAVE_BZERO)
 
 FIND_FILE(HAS_DOTGIT .git PATHS "${CMAKE_CURRENT_SOURCE_DIR}")
 if("${HAS_DOTGIT}" MATCHES ".git")
 	find_package(Git)
 	if(GIT_EXECUTABLE)
 		execute_process(
-				COMMAND ${GIT_EXECUTABLE} rev-parse -q --short=8 HEAD
+			COMMAND ${GIT_EXECUTABLE} rev-parse -q --short=8 HEAD
 			OUTPUT_VARIABLE GIT_SHA1
-				OUTPUT_STRIP_TRAILING_WHITESPACE
-				)
-	set(K_REVISION "0x${GIT_SHA1}")
+			OUTPUT_STRIP_TRAILING_WHITESPACE
+		)
+	set(K_REVISION "${GIT_SHA1}")
 	set(K_REVISION_PREFIX "git:")
 	endif(GIT_EXECUTABLE)
 else()
-find_package(Subversion)
-if(Subversion_FOUND)
-	set(_PATH)
-	get_filename_component(_PATH ${CMAKE_CURRENT_SOURCE_DIR} REALPATH)
-	Subversion_WC_INFO(${_PATH} ER)
-	set(K_REVISION ${ER_WC_REVISION})
-	set(K_REVISION_PREFIX "svn:")
-endif(Subversion_FOUND)
+	set(K_REVISION "${PACKAGE_VERSION}")
+	set(K_REVISION_PREFIX "release:")
 endif()
 
 add_definitions(-DHAVE_CONFIG_H)
@@ -268,10 +271,18 @@ foreach(f ${test_files})
 endforeach(f ${test_files})
 
 add_library(minikonoha SHARED ${RUNTIME} ${GC} ${PARSER} ${VM})
+if(MSVC)
+	set_source_files_properties(${RUNTIME} ${GC} ${PARSER} ${VM} PROPERTIES LANGUAGE CXX )
+	set_target_properties (minikonoha PROPERTIES LINKER_LANGUAGE CXX )
+endif(MSVC)
 target_link_libraries(minikonoha ${ExtraLibs})
 set(ExtraLibs ${ExtraLibs} minikonoha)
 
 add_executable(minikonoha_bin platform/shell/command.c)
+if(MSVC)
+	set_source_files_properties(platform/shell/command.c PROPERTIES LANGUAGE CXX )
+	set_target_properties (minikonoha_bin PROPERTIES LINKER_LANGUAGE CXX )
+endif(MSVC)
 target_link_libraries(minikonoha_bin ${ExtraLibs})
 set_target_properties(minikonoha_bin PROPERTIES OUTPUT_NAME minikonoha)
 
@@ -304,7 +315,7 @@ macro(create_package_project _PKGNAME)
 	set(LIB  "${_PACKAGE_NAME}_glue")
 	set(_PACKAGE_VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 	set(_PACKAGE_STRING  ${CMAKE_PROJECT_NAME}-${_PACKAGE_VERSION})
-	set(_KONOHA_PACKAGE_DIR minikonoha/package/${KONOHA_VERSION}/${PROJECT_NAME})
+	set(_KONOHA_PACKAGE_DIR lib/minikonoha/${SO_VERSION}/package/${KONOHA_VERSION}/${PROJECT_NAME})
 	set(CMAKE_C_FLAGS_${uppercase_CMAKE_BUILD_TYPE}
 		"${CMAKE_C_FLAGS_${uppercase_CMAKE_BUILD_TYPE}} ${PACKAGE_C_FLAGS}")
 	set(CMAKE_CXX_FLAGS_${uppercase_CMAKE_BUILD_TYPE}
@@ -317,6 +328,10 @@ macro(create_package_project _PKGNAME)
 	list(LENGTH PACKAGE_SOURCE_CODE LEN)
 	if(${LEN} GREATER 0)
 		add_library(${LIB} SHARED ${PACKAGE_SOURCE_CODE})
+		if(MSVC)
+			set_source_files_properties(${PACKAGE_SOURCE_CODE} PROPERTIES LANGUAGE CXX )
+			set_target_properties (${LIB} PROPERTIES LINKER_LANGUAGE CXX )
+		endif(MSVC)
 		set_target_properties(${LIB} PROPERTIES PREFIX "")
 		if(PACKAGE_EXTRA_LIBRARY)
 		target_link_libraries(${LIB} ${PACKAGE_EXTRA_LIBRARY})
@@ -355,6 +370,10 @@ endforeach()
 
 macro(add_clib_test test_name)
 	add_executable(${test_name} ${ARGN})
+	if(MSVC)
+		set_source_files_properties(${ARGN} PROPERTIES LANGUAGE CXX )
+		set_target_properties (${test_name} PROPERTIES LINKER_LANGUAGE CXX )
+	endif(MSVC)
 	target_link_libraries(${test_name} ${ExtraLibs})
 	add_test(Clib/Release/${test_name} ${test_name})
 	set_tests_properties(Clib/Release/${test_name} PROPERTIES TIMEOUT 5)
@@ -378,12 +397,20 @@ add_builtin_test(Release/Logger  --builtin-test=test_logger)
 add_builtin_test(Release/Kwb     --builtin-test=test_kwb)
 add_builtin_test(Release/Kvproto --builtin-test=test_kvproto)
 
+macro(set_package_path test_name)
+set_tests_properties(${test_name} PROPERTIES ENVIRONMENT
+	"KONOHA_PACKAGEPATH=${PARENT_BINARY_DIR}/package")
+endmacro(set_package_path test_name)
+
 add_test(Shell/Release/Oneline
 	${CMAKE_CURRENT_SOURCE_DIR}/test/test-oneline.sh ${TEST_BIN}
 	"System.p(\"hi\");")
+set_package_path(Shell/Release/Oneline)
+
 add_test(Shell/Release/Multiline
 	${CMAKE_CURRENT_SOURCE_DIR}/test/test-multiline.sh ${TEST_BIN}
 	${CMAKE_CURRENT_SOURCE_DIR}/test/Release/Fibonacci.k)
+set_package_path(Shell/Release/Multiline)
 
 file(GLOB_RECURSE test_files ${CMAKE_CURRENT_SOURCE_DIR}/test/Shell/*.sh)
 foreach(f ${test_files})
@@ -402,14 +429,23 @@ endforeach(f ${test_files})
 
 add_subdirectory(platform/dse)
 add_subdirectory(platform/apache)
+add_subdirectory(platform/logger-shell)
 
 # for konoha command
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/platform/shell/konoha.sh.cmake
 		${CMAKE_CURRENT_BINARY_DIR}/konoha.sh)
+
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/konoha.sh
 	DESTINATION bin
 	RENAME konoha
 	PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+
+# Install files
+# ${CMAKE_INSTALL_PREFIX}/bin/konoha
+# ${CMAKE_INSTALL_PREFIX}/bin/minikonoha
+# ${CMAKE_INSTALL_PREFIX}/lib/libminikonoha.dylib
+# ${CMAKE_INSTALL_PREFIX}/lib/minikonoha/${SO_VERSION}/package/konoha.while/while_glue.{k,dylib}
+# ${CMAKE_INSTALL_PREFIX}/include/minikonoha/*.h
 
 install(TARGETS minikonoha minikonoha_bin
 		RUNTIME DESTINATION bin

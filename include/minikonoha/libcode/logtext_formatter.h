@@ -29,11 +29,9 @@
 
 #define writeToBuffer(CH, buftop, bufend) { buftop[0] = CH; buftop++; }
 
-#define TEXTSIZE(T)   T, (sizeof(T) - 1)
-
 static char *writeFixedTextToBuffer(const char *text, size_t len, char *buftop, char *bufend)
 {
-	if(bufend - buftop > len) {
+	if((size_t)(bufend - buftop) > len) {
 		memcpy(buftop, text, len);
 		return buftop+len;
 	}

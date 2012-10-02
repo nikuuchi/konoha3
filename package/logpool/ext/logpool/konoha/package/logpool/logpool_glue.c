@@ -62,7 +62,7 @@ static void Log_free(CTX, kObject *po)
 	o->rawptr = NULL;
 }
 
-static void Log_p(CTX, ksfp_t *sfp, int pos, kwb_t *wb, int level)
+static void Log_p(CTX, ksfp_t *sfp, int pos, kwb_t *wb)
 {
 	kRawPtr *self = (kRawPtr *) sfp[0].o;
 	struct Log *log = (struct Log *) self->rawptr;
@@ -109,7 +109,7 @@ static KMETHOD LogPool_get(CTX, ksfp_t *sfp _RIX)
 	char *ret = logpool_client_get(lp, buf, 256);
 	kObject *log = new_kObject(O_ct(sfp[K_RTNIDX].o), NULL);
 	if (ret == NULL) {
-		kObject_setNullObject(log, 1);
+		kObject_set(NullObject, log, 1);
 		free(buf);
 	}
 	RawPtr_init(_ctx, log, buf);

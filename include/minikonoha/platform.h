@@ -25,6 +25,20 @@
 #ifndef PLATFORM_H_
 #define PLATFORM_H_
 
+#ifndef MINIOKNOHA_H_
+#error Do not include platform.h without minikonoha.h.
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+extern int verbose_debug;
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
 #ifdef __MINGW32__
 #include <minikonoha/platform_mingw.h>
 #else

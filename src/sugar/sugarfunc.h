@@ -238,13 +238,13 @@ static KMETHOD ParseExpr_DOLLAR(KonohaContext *kctx, KonohaStack *sfp)
 /* ------------------------------------------------------------------------ */
 /* Expression TyCheck */
 
-static kString *resolveEscapeSequence(KonohaContext *kctx, kString *s, size_t start)
+static kString *kToken_resolvedEscapeSequence(KonohaContext *kctx, kToken *tk, size_t start)
 {
-	const char *text = S_text(s) + start;
-	const char *end  = S_text(s) + S_size(s);
 	KUtilsWriteBuffer wb;
 	KLIB Kwb_init(&(kctx->stack->cwb), &wb);
-	KLIB Kwb_write(kctx, &wb, S_text(s), start);
+	const char *text = S_text(tk->text) + start;
+	const char *end  = S_text(tk->text) + S_size(tk->text);
+	KLIB Kwb_write(kctx, &wb, S_text(tk->text), start);
 	while (text < end) {
 		int ch = *text;
 		if(ch == '\\' && *(text+1) != '\0') {
@@ -262,12 +262,17 @@ static kString *resolveEscapeSequence(KonohaContext *kctx, kString *s, size_t st
 			case '"':  ch = '"';  text++; break;
 			case '\'': ch = '\''; text++; break;
 			case '\\': ch = '\\'; text++; break;
+			default:	return NULL;
 			}
 		}
-		kwb_putc(&wb, ch);
+		{
+			char buf[1] = {ch};
+			KLIB Kwb_write(kctx, &wb, (const char*)buf, 1);
+		}
 		text++;
 	}
-	s = KLIB new_kString(kctx, KLIB Kwb_top(kctx, &wb, 1), Kwb_bytesize(&wb), 0);
+	kString *s = KLIB new_kString(kctx, KLIB Kwb_top(kctx, &wb, 1), Kwb_bytesize(&wb), 0);
+	PUSH_GCSTACK(s);
 	KLIB Kwb_free(&wb);
 	return s;
 }
@@ -277,12 +282,12 @@ static KMETHOD ExprTyCheck_Text(KonohaContext *kctx, KonohaStack *sfp)
 	VAR_ExprTyCheck(stmt, expr, gma, reqty);
 	kToken *tk = expr->termToken;
 	kString *text = tk->text;
-	size_t i, size = S_size(text);
-	for(i = 0; i < size; i++) {
-		int ch = text->buf[i];
-		if(ch == '\\') {
-			text = resolveEscapeSequence(kctx, text, i);
-			break;
+	if(kToken_is(RequiredReformat, tk)) {
+		const char *escape = strchr(S_text(text), '\\');
+		DBG_ASSERT(escape != NULL);
+		text = kToken_resolvedEscapeSequence(kctx, tk, escape - S_text(text));
+		if(text == NULL) {
+			RETURN_(ERROR_UndefinedEscapeSequence(kctx, stmt, tk));
 		}
 	}
 	RETURN_(SUGAR kExpr_setConstValue(kctx, expr, TY_String, UPCAST(text)));
@@ -466,7 +471,7 @@ static kExpr* kStmt_tyCheckVariableNULL(KonohaContext *kctx, kStmt *stmt, kExpr 
 			return SUGAR kExpr_setVariable(kctx, expr, gma, TEXPR_LOCAL, genv->localScope.varItems[i].ty, i);
 		}
 	}
-	if(kNameSpace_allowedImplicitFieldAccess(ns)) {
+	if(kNameSpace_isAllowed(ImplicitField, ns)) {
 		if(genv->localScope.varItems[0].ty != TY_void) {
 			DBG_ASSERT(genv->this_cid == genv->localScope.varItems[0].ty);
 			KonohaClass *ct = CT_(genv->this_cid);
@@ -483,7 +488,7 @@ static kExpr* kStmt_tyCheckVariableNULL(KonohaContext *kctx, kStmt *stmt, kExpr 
 			}
 		}
 	}
-	if((Gamma_isTopLevel(gma) || kNameSpace_allowedTransparentGlobalVariable(ns)) && ns->globalObjectNULL != NULL) {
+	if((Gamma_isTopLevel(gma) || kNameSpace_isAllowed(TransparentGlobalVariable, ns)) && ns->globalObjectNULL != NULL) {
 		ktype_t cid = O_typeId(ns->globalObjectNULL);
 		kMethod *mtd = kNameSpace_getGetterMethodNULL(kctx, ns, cid, symbol, TY_var);
 		if(mtd != NULL) {
@@ -695,7 +700,7 @@ static kMethod* Expr_lookUpFuncOrMethod(KonohaContext *kctx, kNameSpace *ns, kEx
 	}
 	if(genv->localScope.varItems[0].ty != TY_void) {
 		DBG_ASSERT(genv->this_cid == genv->localScope.varItems[0].ty);
-		kMethod *mtd = KLIB kNameSpace_getMethodByParamSizeNULL(kctx, ns, genv->this_cid, fn, -1);
+		kMethod *mtd = KLIB kNameSpace_getMethodByParamSizeNULL(kctx, ns, genv->this_cid, fn, kArray_size(exprN->cons) - 2);
 		if(mtd != NULL) {
 			KSETv(exprN->cons, exprN->cons->exprItems[1], new_VariableExpr(kctx, gma, TEXPR_LOCAL, gma->genv->this_cid, 0));
 			return mtd;
@@ -723,8 +728,7 @@ static kMethod* Expr_lookUpFuncOrMethod(KonohaContext *kctx, kNameSpace *ns, kEx
 			return mtd;
 		}
 	}
-
-	if((Gamma_isTopLevel(gma) || kNameSpace_allowedTransparentGlobalVariable(ns)) && ns->globalObjectNULL != NULL) {
+	if((Gamma_isTopLevel(gma) || kNameSpace_isAllowed(TransparentGlobalVariable,ns)) && ns->globalObjectNULL != NULL) {
 		ktype_t cid = O_typeId(ns->globalObjectNULL);
 		kMethod *mtd = kNameSpace_getGetterMethodNULL(kctx, ns, cid, fn, TY_var);
 		if(mtd != NULL && TY_isFunc(Method_returnType(mtd))) {
@@ -1115,8 +1119,8 @@ static KMETHOD StmtTyCheck_MethodDecl(KonohaContext *kctx, KonohaStack *sfp)
 	ktype_t typeId    = kStmt_getClassId(kctx, stmt, ns, SYM_("ClassName"), O_typeId(ns));
 	kmethodn_t mn     = kStmt_getMethodSymbol(kctx, stmt, ns, KW_SymbolPattern, MN_new);
 	kParam *pa        = kStmt_newMethodParamNULL(kctx, stmt, gma);
-	if(TY_isSingleton(typeId)) { flag |= kMethod_Static; }
-	if(TY_isFinal(typeId)) { flag |= kMethod_Final; }
+	if(TY_is(Singleton, typeId)) { flag |= kMethod_Static; }
+	if(TY_is(Final, typeId)) { flag |= kMethod_Final; }
 	if(pa != NULL) {  // if pa is NULL, error is printed out.
 		kMethod *mtd = KLIB new_kMethod(kctx, flag, typeId, mn, NULL);
 		PUSH_GCSTACK(mtd);
@@ -1141,9 +1145,9 @@ static KMETHOD StmtTyCheck_MethodDecl(KonohaContext *kctx, KonohaStack *sfp)
 
 /* ------------------------------------------------------------------------ */
 
-#define PATTERN(T)  .keyword = KW_##T##Pattern
-#define GROUP(T)    .keyword = KW_##T##Group
-#define TOKEN(T)    .keyword = KW_##T
+#define PATTERN(T)  KW_##T##Pattern
+#define GROUP(T)    KW_##T##Group
+#define TOKEN(T)    KW_##T
 
 static void defineDefaultSyntax(KonohaContext *kctx, kNameSpace *ns)
 {
@@ -1155,46 +1159,44 @@ static void defineDefaultSyntax(KonohaContext *kctx, kNameSpace *ns)
 	DBG_ASSERT(SYM_("new") == MN_new);
 
 	KDEFINE_SYNTAX SYNTAX[] = {
-		{ TOKEN(ERR), .flag = SYNFLAG_StmtBreakExec, },
-		{ PATTERN(Symbol),  PatternMatch_(MethodName), ParseExpr_(Term), ExprTyCheck_(Symbol),},
-		{ PATTERN(Text),    ExprTyCheck_(Text),},
-		{ PATTERN(Number),  ExprTyCheck_(Int),},
-//		{ PATTERN(Float),  },
-		{ GROUP(Parenthesis), .flag = SYNFLAG_ExprPostfixOp2, ParseExpr_(Parenthesis), .precedence_op2 = C_PRECEDENCE_CALL, ExprTyCheck_(FuncStyleCall),}, //KW_ParenthesisGroup
+		{ TOKEN(ERR), SYNFLAG_StmtBreakExec, },
+		{ PATTERN(Symbol),  0, NULL, 0, 0, PatternMatch_MethodName, ParseExpr_Term, NULL, NULL, ExprTyCheck_Symbol,},
+		{ PATTERN(Text),    0, NULL, 0, 0, NULL, NULL, NULL, NULL, ExprTyCheck_Text,},
+		{ PATTERN(Number),  0, NULL, 0, 0, NULL, NULL, NULL, NULL, ExprTyCheck_Int,},
+		{ GROUP(Parenthesis), SYNFLAG_ExprPostfixOp2, NULL, C_PRECEDENCE_CALL, 0, NULL, ParseExpr_Parenthesis, NULL, NULL, ExprTyCheck_FuncStyleCall,}, //KW_ParenthesisGroup
 		{ GROUP(Bracket),  },  //KW_BracketGroup
 		{ GROUP(Brace),  }, // KW_BraceGroup
-		{ PATTERN(Block), PatternMatch_(Block), ExprTyCheck_(Block), },
-		{ PATTERN(Param), PatternMatch_(Params), ParseExpr_(Op), TopStmtTyCheck_(ParamsDecl), ExprTyCheck_(MethodCall),},
-		{ PATTERN(Token), PatternMatch_(Toks), },
-		{ TOKEN(DOT), ParseExpr_(DOT), .precedence_op2 = C_PRECEDENCE_CALL, },
-		{ TOKEN(DIV), .precedence_op2 = C_PRECEDENCE_MUL, },
-		{ TOKEN(MOD), .precedence_op2 = C_PRECEDENCE_MUL, },
-		{ TOKEN(MUL), .precedence_op2 = C_PRECEDENCE_MUL, },
-		{ TOKEN(ADD), .precedence_op2 = C_PRECEDENCE_ADD, },
-		{ TOKEN(SUB), .precedence_op2 = C_PRECEDENCE_ADD, .precedence_op1 = C_PRECEDENCE_PREUNARY, },
-		{ TOKEN(LT),  .precedence_op2 = C_PRECEDENCE_COMPARE, },
-		{ TOKEN(LTE), .precedence_op2 = C_PRECEDENCE_COMPARE, },
-		{ TOKEN(GT),  .precedence_op2 = C_PRECEDENCE_COMPARE, },
-		{ TOKEN(GTE), .precedence_op2 = C_PRECEDENCE_COMPARE, },
-		{ TOKEN(EQ),  .precedence_op2 = C_PRECEDENCE_EQUALS, },
-		{ TOKEN(NEQ), .precedence_op2 = C_PRECEDENCE_EQUALS, },
-		{ TOKEN(LET), .flag = SYNFLAG_ExprLeftJoinOp2, ParseExpr_(Op), ExprTyCheck_(assign), .precedence_op2 = C_PRECEDENCE_ASSIGN, },
-		{ TOKEN(AND), .precedence_op2 = C_PRECEDENCE_AND, ParseExpr_(Op), ExprTyCheck_(AND)},
-		{ TOKEN(OR),  .precedence_op2 = C_PRECEDENCE_OR, ParseExpr_(Op), ExprTyCheck_(OR)},
-		{ TOKEN(NOT),  .precedence_op1 = C_PRECEDENCE_PREUNARY,},
-		{ TOKEN(COLON), .precedence_op2 = C_PRECEDENCE_TRINARY, },  // colon
-		{ TOKEN(COMMA),    ParseExpr_(COMMA), .precedence_op2 = C_PRECEDENCE_COMMA,},
-		{ TOKEN(DOLLAR),   ParseExpr_(DOLLAR), },
-		{ TOKEN(true),    ExprTyCheck_(true),},
-		{ TOKEN(false),   ExprTyCheck_(false),},
-		{ PATTERN(Expr), .rule ="$Expr", PatternMatch_(Expr), TopStmtTyCheck_(Expr), StmtTyCheck_(Expr), ParseExpr_(Expr) },
-		{ PATTERN(Type),  PatternMatch_(Type), .rule = "$Type $Expr", StmtTyCheck_(TypeDecl), ExprTyCheck_(Type), },
-//		{ PATTERN(Const), PatternMatch_(ConstName), .rule = "$Const \"=\" $Expr", TopStmtTyCheck_(ConstDecl), },
-		{ PATTERN(MethodDecl), .rule ="$Type [ClassName: $Type \".\"] $Symbol $Param [$Block]", TopStmtTyCheck_(MethodDecl)},
-		{ TOKEN(if),     .rule ="\"if\" \"(\" $Expr \")\" $Block [\"else\" else: $Block]", TopStmtTyCheck_(if), StmtTyCheck_(if), },
-		{ TOKEN(else),   .rule = "\"else\" $Block", TopStmtTyCheck_(else), StmtTyCheck_(else), },
-		{ TOKEN(return), .rule ="\"return\" [$Expr]", .flag = SYNFLAG_StmtBreakExec, StmtTyCheck_(return), },
-		{ .keyword = KW_END, },
+		{ PATTERN(Block), 0, NULL, 0, 0, PatternMatch_Block, NULL, NULL, NULL, ExprTyCheck_Block, },
+		{ PATTERN(Param), 0, NULL, 0, 0, PatternMatch_Params, ParseExpr_Op, StmtTyCheck_ParamsDecl, NULL, ExprTyCheck_MethodCall,},
+		{ PATTERN(Token), 0, NULL, 0, 0, PatternMatch_Toks, },
+		{ TOKEN(DOT), 0, NULL, C_PRECEDENCE_CALL, 0, NULL, ParseExpr_DOT, },
+		{ TOKEN(DIV), 0, NULL, C_PRECEDENCE_MUL, },
+		{ TOKEN(MOD), 0, NULL, C_PRECEDENCE_MUL, },
+		{ TOKEN(MUL), 0, NULL, C_PRECEDENCE_MUL, },
+		{ TOKEN(ADD), 0, NULL, C_PRECEDENCE_ADD, },
+		{ TOKEN(SUB), 0, NULL, C_PRECEDENCE_ADD, C_PRECEDENCE_PREUNARY, },
+		{ TOKEN(LT),  0, NULL, C_PRECEDENCE_COMPARE, },
+		{ TOKEN(LTE), 0, NULL, C_PRECEDENCE_COMPARE, },
+		{ TOKEN(GT),  0, NULL, C_PRECEDENCE_COMPARE, },
+		{ TOKEN(GTE), 0, NULL, C_PRECEDENCE_COMPARE, },
+		{ TOKEN(EQ),  0, NULL, C_PRECEDENCE_EQUALS, },
+		{ TOKEN(NEQ), 0, NULL, C_PRECEDENCE_EQUALS, },
+		{ TOKEN(LET), SYNFLAG_ExprLeftJoinOp2, NULL, C_PRECEDENCE_ASSIGN, 0, NULL, ParseExpr_Op, NULL, NULL, ExprTyCheck_assign, },
+		{ TOKEN(AND), 0, NULL, C_PRECEDENCE_AND, 0, NULL, ParseExpr_Op, NULL, NULL, ExprTyCheck_AND, },
+		{ TOKEN(OR),  0, NULL, C_PRECEDENCE_OR,  0, NULL, ParseExpr_Op, NULL, NULL, ExprTyCheck_OR, },
+		{ TOKEN(NOT), 0, NULL, 0, C_PRECEDENCE_PREUNARY, },
+		{ TOKEN(COLON), 0, NULL, C_PRECEDENCE_TRINARY, },  // colon
+		{ TOKEN(COMMA),   0, NULL, C_PRECEDENCE_COMMA, 0, NULL, ParseExpr_COMMA, },
+		{ TOKEN(DOLLAR),  0, NULL, 0, 0, NULL, ParseExpr_DOLLAR, },
+		{ TOKEN(true),    0, NULL, 0, 0, NULL, NULL, NULL, NULL, ExprTyCheck_true, },
+		{ TOKEN(false),   0, NULL, 0, 0, NULL, NULL, NULL, NULL, ExprTyCheck_false, },
+		{ PATTERN(Expr),  0, "$Expr", 0, 0, PatternMatch_Expr, ParseExpr_Expr, StmtTyCheck_Expr, StmtTyCheck_Expr, NULL, },
+		{ PATTERN(Type),  0, "$Type $Expr", 0, 0, PatternMatch_Type, NULL, NULL, StmtTyCheck_TypeDecl, ExprTyCheck_Type, },
+		{ PATTERN(MethodDecl), 0, "$Type [ClassName: $Type \".\"] $Symbol $Param [$Block]", 0, 0, NULL, NULL, StmtTyCheck_MethodDecl, NULL, NULL, },
+		{ TOKEN(if),     0, "\"if\" \"(\" $Expr \")\" $Block [\"else\" else: $Block]", 0, 0, NULL, NULL, NULL, StmtTyCheck_if, NULL, },
+		{ TOKEN(else),   0,  "\"else\" $Block", 0, 0, NULL, NULL, StmtTyCheck_else, StmtTyCheck_else, NULL, },
+		{ TOKEN(return), SYNFLAG_StmtBreakExec, "\"return\" [$Expr]", 0, 0, NULL, NULL, NULL, StmtTyCheck_return, NULL, },
+		{ KW_END, },
 	};
 	kNameSpace_defineSyntax(kctx, ns, SYNTAX, ns);
 }

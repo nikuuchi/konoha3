@@ -69,7 +69,9 @@ static kstatus_t readstmt(KonohaContext *kctx, KUtilsWriteBuffer *wb, kfileline_
 			status = K_BREAK;
 			break;
 		}
-		if(line > 1) kwb_putc(wb, '\n');
+		if(line > 1) {
+			KLIB Kwb_write(kctx, wb, "\n", 1);
+		}
 		KLIB Kwb_write(kctx, wb, ln, strlen(ln));
 		free(ln);
 		if((check = checkstmt(KLIB Kwb_top(kctx, wb, 0), Kwb_bytesize(wb))) > 0) {
@@ -98,7 +100,7 @@ static void dumpEval(KonohaContext *kctx, KUtilsWriteBuffer *wb)
 	ktype_t ty = base->evalty;
 	if(ty != TY_void) {
 		KonohaStack *lsfp = base->stack + base->evalidx;
-		CT_(ty)->p(kctx, lsfp, 0, wb, P_DUMP);
+		CT_(ty)->p(kctx, lsfp, 0, wb);
 		fflush(stdout);
 		PLATAPI printf_i("TYPE=%s EVAL=%s\n", TY_t(ty), KLIB Kwb_top(kctx, wb,1));
 	}
@@ -131,7 +133,7 @@ static void shell(KonohaContext *kctx)
 static void show_version(KonohaContext *kctx)
 {
 	int i;
-	PLATAPI printf_i(K_PROGNAME " " K_VERSION " (%s) (%x, %s)\n", K_CODENAME, K_REVISION, __DATE__);
+	PLATAPI printf_i(K_PROGNAME " " K_VERSION " (%s) (%s, %s)\n", K_CODENAME, K_REVISION, __DATE__);
 	PLATAPI printf_i("[gcc %s]\n", __VERSION__);
 	PLATAPI printf_i("options:");
 	for(i = 0; i < KonohaModule_MAXSIZE; i++) {

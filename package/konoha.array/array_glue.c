@@ -26,6 +26,10 @@
 #include <minikonoha/sugar.h>
 #include <minikonoha/float.h>
 
+#ifdef __cplusplus
+extern "C"{
+#endif
+
 /* ------------------------------------------------------------------------ */
 
 //## @Immutable method T0 Array.get(Int n);
@@ -171,7 +175,8 @@ static KMETHOD Array_pop(KonohaContext *kctx, KonohaStack *sfp)
 	else {
 		struct _kAbstractArray *a2 = (struct _kAbstractArray*)a;
 		kObject *value = a2->a.objectItems[n];
-		KINITp(a2, a2->a.objectItems[n], NULL);
+		kObject** null = NULL;
+		KINITp(a2, a2->a.objectItems[n], null);
 		a2->a.bytesize = n * sizeof(uintptr_t);
 		RETURN_(value);
 	}
@@ -320,46 +325,46 @@ static KMETHOD Array_lastIndexOf(KonohaContext *kctx, KonohaStack *sfp)
 }
 
 //## method String Array.toString();
-static KMETHOD Array_toString(KonohaContext *kctx, KonohaStack *sfp)
-{
-	kArray *a = sfp[0].asArray;
-	size_t i = 0;
-	KUtilsWriteBuffer wb;
-	KLIB Kwb_init(&(kctx->stack->cwb), &wb);
-	if (kArray_size(a) < 1) {
-		RETURN_(KNULL(String));
-	}
-	if(kArray_isUnboxData(a)) {
-		uintptr_t uv = a->unboxItems[i];
-		for (i = 0; i < kArray_size(a) - 1; i++) {
-			uv = a->unboxItems[i];
-			KLIB Kwb_printf(kctx, &wb, "%ld,", uv);
-		}
-		uv = a->unboxItems[i];
-		KLIB Kwb_printf(kctx, &wb, "%ld", uv);
-	} else {
-		kObject *obj;
-		BEGIN_LOCAL(lsfp, 1);
-		for (i = 0; i < kArray_size(a) - 1; i++) {
-			obj = a->objectItems[i];
-			DBG_ASSERT(O_ct(obj)->p);
-			// before call system.p, push variables
-			KSETv_AND_WRITE_BARRIER(NULL, lsfp[0].o, obj, GC_NO_WRITE_BARRIER);
-			O_ct(obj)->p(kctx, lsfp, 0, &wb, 0);
-			KLIB Kwb_printf(kctx, &wb, ",");
-		}
-		obj = a->objectItems[i];
-		KSETv_AND_WRITE_BARRIER(NULL, lsfp[0].o, obj, GC_NO_WRITE_BARRIER);
-		O_ct(obj)->p(kctx, lsfp, 0, &wb, 0);
-		END_LOCAL();
-
-	}
-	const char *KUtilsWriteBufferTopChar = KLIB Kwb_top(kctx, &wb, 0);
-	size_t strsize = strlen(KUtilsWriteBufferTopChar);
-	kString *ret = KLIB new_kString(kctx, KUtilsWriteBufferTopChar, strsize, 0);
-	KLIB Kwb_free(&wb);
-	RETURN_(ret);
-}
+//static KMETHOD Array_toString(KonohaContext *kctx, KonohaStack *sfp)
+//{
+//	kArray *a = sfp[0].asArray;
+//	size_t i = 0;
+//	KUtilsWriteBuffer wb;
+//	KLIB Kwb_init(&(kctx->stack->cwb), &wb);
+//	if (kArray_size(a) < 1) {
+//		RETURN_(KNULL(String));
+//	}
+//	if(kArray_isUnboxData(a)) {
+//		uintptr_t uv = a->unboxItems[i];
+//		for (i = 0; i < kArray_size(a) - 1; i++) {
+//			uv = a->unboxItems[i];
+//			KLIB Kwb_printf(kctx, &wb, "%ld,", uv);
+//		}
+//		uv = a->unboxItems[i];
+//		KLIB Kwb_printf(kctx, &wb, "%ld", uv);
+//	} else {
+//		kObject *obj;
+//		BEGIN_LOCAL(lsfp, 1);
+//		for (i = 0; i < kArray_size(a) - 1; i++) {
+//			obj = a->objectItems[i];
+//			DBG_ASSERT(O_ct(obj)->p);
+//			// before call system.p, push variables
+//			KSETv_AND_WRITE_BARRIER(NULL, lsfp[0].o, obj, GC_NO_WRITE_BARRIER);
+//			O_ct(obj)->p(kctx, lsfp, 0, &wb, 0);
+//			KLIB Kwb_printf(kctx, &wb, ",");
+//		}
+//		obj = a->objectItems[i];
+//		KSETv_AND_WRITE_BARRIER(NULL, lsfp[0].o, obj, GC_NO_WRITE_BARRIER);
+//		O_ct(obj)->p(kctx, lsfp, 0, &wb, 0);
+//		END_LOCAL();
+//
+//	}
+//	const char *KUtilsWriteBufferTopChar = KLIB Kwb_top(kctx, &wb, 0);
+//	size_t strsize = strlen(KUtilsWriteBufferTopChar);
+//	kString *ret = KLIB new_kString(kctx, KUtilsWriteBufferTopChar, strsize, 0);
+//	KLIB Kwb_free(&wb);
+//	RETURN_(ret);
+//}
 
 static KMETHOD Array_new(KonohaContext *kctx, KonohaStack *sfp)
 {
@@ -428,7 +433,7 @@ static kbool_t array_initPackage(KonohaContext *kctx, kNameSpace *ns, int argc, 
 		_Public,        _F(Array_concat), TY_ArrayT0, TY_Array, MN_("concat"), 1, TY_ArrayT0, FN_("a1"),
 		_Public,        _F(Array_indexOf), TY_int, TY_Array, MN_("indexOf"), 1, TY_0, FN_("value"),
 		_Public,        _F(Array_lastIndexOf), TY_int, TY_Array, MN_("lastIndexOf"), 1, TY_0, FN_("value"),
-		_Public,        _F(Array_toString), TY_String, TY_Array, MN_("toString"), 0,
+//		_Public,        _F(Array_toString), TY_String, TY_Array, MN_("toString"), 0,
 		_Public|_Im,    _F(Array_new), TY_void, TY_Array, MN_("new"), 1, TY_int, FN_("size"),
 		_Public,        _F(Array_newArray), TY_Array, TY_Array, MN_("newArray"), 1, TY_int, FN_("size"),
 		_Public|kMethod_Hidden, _F(Array_newList), TY_Array, TY_Array, MN_("newList"), 0,
@@ -535,8 +540,8 @@ static KMETHOD ParseExpr_Bracket(KonohaContext *kctx, KonohaStack *sfp)
 static kbool_t array_initNameSpace(KonohaContext *kctx, kNameSpace *packageNameSpace, kNameSpace *ns, kfileline_t pline)
 {
 	KDEFINE_SYNTAX SYNTAX[] = {
-		{ GROUP(Bracket), .flag = SYNFLAG_ExprPostfixOp2, ExprTyCheck_(Bracket), ParseExpr_(Bracket), .precedence_op2 = C_PRECEDENCE_CALL, },
-		{ .keyword = KW_END, },
+		{ KW_BracketGroup, SYNFLAG_ExprPostfixOp2, NULL, C_PRECEDENCE_CALL, 0, NULL, ParseExpr_Bracket, NULL, NULL, ExprTyCheck_Bracket, },
+		{ KW_END, },
 	};
 	SUGAR kNameSpace_defineSyntax(kctx, ns, SYNTAX, packageNameSpace);
 	return true;
@@ -549,12 +554,15 @@ static kbool_t array_setupNameSpace(KonohaContext *kctx, kNameSpace *packageName
 
 KDEFINE_PACKAGE* array_init(void)
 {
-	static KDEFINE_PACKAGE d = {
-		KPACKNAME("konoha", "1.0"),
-		.initPackage = array_initPackage,
-		.setupPackage = array_setupPackage,
-		.initNameSpace = array_initNameSpace,
-		.setupNameSpace = array_setupNameSpace,
-	};
+	static KDEFINE_PACKAGE d = {0};
+	KSETPACKNAME(d, "array", "1.0");
+	d.initPackage    = array_initPackage;
+	d.setupPackage   = array_setupPackage;
+	d.initNameSpace  = array_initNameSpace;
+	d.setupNameSpace = array_setupNameSpace;
 	return &d;
 }
+
+#ifdef __cplusplus
+}
+#endif
