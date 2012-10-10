@@ -26,7 +26,7 @@
 
 #include <stdio.h>
 
-#define GCDEBUG 1
+//#define GCDEBUG 1
 
 #include "minikonoha/minikonoha.h"
 #include "minikonoha/gc.h"
@@ -66,9 +66,9 @@ extern "C" {
 #define CEIL(F)     (F-(int)(F) > 0 ? (int)(F+1) : (int)(F))
 
 #if SIZEOF_VOIDP*8 == 64
-//#define USE_GENERATIONAL_GC 1
+#define USE_GENERATIONAL_GC 1
 #endif
-#define USE_SNAPSHOT_GC 1
+//#define USE_SNAPSHOT_GC 1
 
 #if defined(USE_GENERATIONAL_GC) || defined(USE_SNAPSHOT_GC)
 #define MINOR_COUNT 16
@@ -855,7 +855,7 @@ static inline size_t SizeToKlass(size_t n) {
 
 #ifdef USE_SNAPSHOT_GC
 #define SEG_SNAPSHOT_N(seg, n, idx) ((bitmap_t*)((seg->snapshots[n])+idx))
-#define AP_SNAPSHOT_N(ap, n, idx)   SEG_BITMAP_N(ap->seg, n, idx)
+#define AP_SNAPSHOT_N(ap, n, idx)   SEG_SNAPSHOT_N(ap->seg, n, idx)
 #endif
 
 static Segment *allocSegment(HeapManager *mng, int klass)
@@ -1316,6 +1316,10 @@ static void deferred_sweep(HeapManager *mng, kObject *o)
 #endif
 }
 
+#ifdef USE_SNAPSHOT_GC
+static void newObject_markBitmap(HeapManager *mng, kObject *o);
+#endif
+
 #define minorGC(kctx, mng) bitmapMarkingGC(kctx, mng, GC_MAJOR)
 #define majorGC(kctx, mng) bitmapMarkingGC(kctx, mng, GC_MINOR)
 
@@ -1362,6 +1366,10 @@ static kObject *bm_malloc_internal(HeapManager *mng, size_t n)
 	global_gc_stat.object_count[h->heap_klass]++;
 #endif
 	deferred_sweep(mng, temp);
+#ifdef USE_SNAPSHOT_GC
+	KonohaContext *kctx = mng->kctx;
+	newObject_markBitmap(mng, temp);
+#endif
 	return temp;
 }
 
@@ -1684,27 +1692,37 @@ static void RememberSet_reftrace(KonohaContext *kctx, HeapManager *mng)
 
 #endif
 
+#ifdef USE_SNAPSHOT_GC
+static void newObject_markBitmap(HeapManager *mng, kObject *o)
+{
+	if(mng->flags == GC_MARK) {
+		Segment *seg;
+		int index, klass;
+		uintptr_t bpidx, bpmask;
+		OBJECT_LOAD_BLOCK_INFO(o, seg, index, klass);
+		BITPTR_INIT_(bpidx, bpmask, index);
+		bitmap_t *bm  = SEG_SNAPSHOT_N(seg, 0, bpidx);
+		prefetch_(SEG_SNAPSHOT_N(seg, 1, 0), 1, 1);
+
+		DBG_ASSERT(DBG_CHECK_OBJECT_IN_SEGMENT(o, seg));
+		DBG_ASSERT(DBG_CHECK_SNAPSHOT(seg, bm));
+		BM_SET(*bm, bpmask);
+
+		bitmap_mark(*bm, seg, bpidx, bpmask);
+	}
+
+}
+#endif
+
 static void Kwrite_barrier(KonohaContext *kctx, kObject *parent)
 {
 #ifdef USE_GENERATIONAL_GC
 	RememberSet_add(parent);
 #elif USE_SNAPSHOT_GC
-/*
-	Segment *seg;
-	int index, klass;
-	uintptr_t bpidx, bpmask;
-	OBJECT_LOAD_BLOCK_INFO(parent, seg, index, klass);
-	BITPTR_INIT_(bpidx, bpmask, index);
-	bitmap_t *bm  = SEG_SNAPSHOT_N(seg, 0, bpidx);
-	prefetch_(SEG_SNAPSHOT_N(seg, 1, 0), 1, 1);
-
-	DBG_ASSERT(DBG_CHECK_OBJECT_IN_SEGMENT(parent, seg));
-	DBG_ASSERT(DBG_CHECK_SNAPSHOT(seg, bm));
-
-	if(mng->flags == GC_MARK && !BM_TEST(*bm, bpmask)) {
-		mark_mstack(kctx, HeapManager(kctx), parent, &memlocal(kctx)->mstack); 
+	HeapManager *mng = kctx->gcContext;
+	if(mng->flags == GC_MARK) {
+		mark_mstack(kctx, mng, parent, &mng->mstack);
 	}
-*/
 #endif
 }
 
