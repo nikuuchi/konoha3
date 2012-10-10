@@ -26,7 +26,7 @@
 
 #include <stdio.h>
 
-//#define GCDEBUG 1
+#define GCDEBUG 1
 
 #include "minikonoha/minikonoha.h"
 #include "minikonoha/gc.h"
@@ -66,10 +66,11 @@ extern "C" {
 #define CEIL(F)     (F-(int)(F) > 0 ? (int)(F+1) : (int)(F))
 
 #if SIZEOF_VOIDP*8 == 64
-#define USE_GENERATIONAL_GC 1
+//#define USE_GENERATIONAL_GC 1
 #endif
+#define USE_SNAPSHOT_GC 1
 
-#ifdef USE_GENERATIONAL_GC
+#if defined(USE_GENERATIONAL_GC) || defined(USE_SNAPSHOT_GC)
 #define MINOR_COUNT 16
 #endif
 
@@ -1687,14 +1688,8 @@ static void Kwrite_barrier(KonohaContext *kctx, kObject *parent)
 {
 #ifdef USE_GENERATIONAL_GC
 	RememberSet_add(parent);
-#endif
-}
-
-static void KsetObjectField(kObject *parent, kObjectVar **oldValPtr, kObjectVar *newVal)
-{
-#ifdef USE_GENERATIONAL_GC
-	RememberSet_add(parent);
 #elif USE_SNAPSHOT_GC
+/*
 	Segment *seg;
 	int index, klass;
 	uintptr_t bpidx, bpmask;
@@ -1706,9 +1701,17 @@ static void KsetObjectField(kObject *parent, kObjectVar **oldValPtr, kObjectVar 
 	DBG_ASSERT(DBG_CHECK_OBJECT_IN_SEGMENT(parent, seg));
 	DBG_ASSERT(DBG_CHECK_SNAPSHOT(seg, bm));
 
-	if(kctx->safepoint == GC_MARK && !BM_TEST(*bm, bpmask)) {
+	if(mng->flags == GC_MARK && !BM_TEST(*bm, bpmask)) {
 		mark_mstack(kctx, HeapManager(kctx), parent, &memlocal(kctx)->mstack); 
 	}
+*/
+#endif
+}
+
+static void KsetObjectField(kObject *parent, kObjectVar **oldValPtr, kObjectVar *newVal)
+{
+#ifdef USE_GENERATIONAL_GC
+	RememberSet_add(parent);
 #endif
 	*oldValPtr = newVal;
 }
@@ -1748,9 +1751,10 @@ static void bmgc_gc_mark(HeapManager *mng, enum gc_mode mode)
 
 #else
 
-static void snapshot_root_scan(KonohaContext *kctx, HeapManager *mng, KonohaStack *esp, enum gc_mode mode)
+static void snapshot_root_scan(HeapManager *mng)
 {
-	MarkStack *mstack = mstack_init(kctx, &memlocal(kctx)->mstack);
+	KonohaContext *kctx = mng->kctx;
+	MarkStack *mstack = mstack_init(&mng->mstack);
 	KonohaStackRuntimeVar *stack = kctx->stack;
 
 	context_reset_refs(kctx);
@@ -1763,9 +1767,10 @@ static void snapshot_root_scan(KonohaContext *kctx, HeapManager *mng, KonohaStac
 	}
 }
 
-static void snapshot_gc_mark(KonohaContext *kctx, HeapManager *mng, KonohaStack *esp, enum gc_mode mode)
+static void snapshot_gc_mark(HeapManager *mng)
 {
-	MarkStack *mstack = &memlocal(kctx)->mstack;
+	KonohaContext *kctx = mng->kctx;
+	MarkStack *mstack = &mng->mstack;
 	KonohaStackRuntimeVar *stack = kctx->stack;
 	kObject *ref = NULL;
 	size_t ref_size = stack->reftail - stack->ref.refhead;
@@ -1773,7 +1778,7 @@ static void snapshot_gc_mark(KonohaContext *kctx, HeapManager *mng, KonohaStack 
 
 	while (count<MARK_MAX_COUNT) {
 		if ((ref = mstack_next(mstack)) == NULL) {
-			((KonohaContextVar *)kctx)->safepoint = GC_SWEEP;
+			mng->flags = GC_SWEEP;
 			return;
 		}
 
@@ -1788,6 +1793,7 @@ static void snapshot_gc_mark(KonohaContext *kctx, HeapManager *mng, KonohaStack 
 		++count;
 	}
 }
+#endif /* USE_SNAPSHOT_GC */
 
 #define LIST_PUSH(tail, e) do {\
 	*tail = e;\
@@ -1876,28 +1882,29 @@ static void bmgc_gc_sweep(HeapManager *mng)
 }
 
 #ifdef USE_SNAPSHOT_GC
-#define SET_GC_PHASE(f) ((KonohaContextVar *)kctx)->safepoint = (f)
+#define SET_GC_PHASE(i) mng->flags = (i)
 
-static void snapshotGC(KonohaContext *kctx, HeapManager *mng, enum gc_mode mode)
+static void snapshotGC(HeapManager *mng)
 {
+	KonohaContext *kctx = mng->kctx;
+	enum gc_mode mode = GC_MINOR;
 	DBG_P("GC starting");
-	switch(kctx->safepoint){
-		case GC_ROOT_SCAN:
-			bmgc_gc_init(kctx, mng, mode);
-			snapshot_root_scan(kctx, mng, kctx->esp, mode);
-			SET_GC_PHASE(GC_MARK);
-			break;
-		case GC_MARK:
-			snapshot_gc_mark(kctx, mng, kctx->esp, mode);
-			break;
-		case GC_SWEEP:
-			bmgc_gc_sweep(kctx, HeapManager(kctx));
-			bitmap_reset(&((KonohaContextVar*)kctx)->safepoint, 0);
+	switch(mng->flags) {
+	case GC_ROOT_SCAN:
+		bmgc_gc_init(mng, mode);
+		snapshot_root_scan(mng);
+		SET_GC_PHASE(GC_MARK);
+		break;
+	case GC_MARK:
+		snapshot_gc_mark(mng);
+		break;
+	case GC_SWEEP:
+		bmgc_gc_sweep(mng);
+		bitmap_reset(&mng->flags, 0);
 	}
 }
 
 #else
-
 
 static void bitmapMarkingGC(HeapManager *mng, enum gc_mode mode)
 {
@@ -2013,12 +2020,20 @@ static kbool_t KisObject(HeapManager *mng, void *ptr)
 
 static void KscheduleGC(HeapManager *mng)
 {
+#ifdef USE_SNAPSHOT_GC
+	enum gc_mode mode = (enum gc_mode)(mng->flags & 0x3);
+	if(mode) {
+		gc_info("scheduleGC mode=%d", mode);
+		snapshotGC(mng);
+	}
+#else
 	enum gc_mode mode = (enum gc_mode)(mng->flags & 0x3);
 	if (mode) {
 		mode = (mode == GC_NOP) ? mode : GC_MINOR;
 		gc_info("scheduleGC mode=%d", mode);
 		bitmapMarkingGC(mng, mode);
 	}
+#endif
 }
 
 /* ------------------------------------------------------------------------ */
