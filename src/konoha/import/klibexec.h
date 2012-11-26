@@ -479,7 +479,7 @@ static void KHashMap_Remove(KHashMap* kmap, KHashMapEntry *oe)
 static void KHashMap_AddStringUnboxValue(KonohaContext *kctx, KHashMap *kmp, uintptr_t hcode, kString *StringKey, uintptr_t unboxValue)
 {
 	KHashMapEntry *e = KLIB KHashMap_newEntry(kctx, kmp, hcode);
-	KUnsafeFieldInit(e->StringKey, StringKey);
+	KFieldInit(NULL,e->StringKey, StringKey);
 	e->unboxValue = unboxValue;
 }
 
@@ -622,7 +622,7 @@ static void kObjectProto_SetObject(KonohaContext *kctx, kAbstractObject *ao, ksy
 	}
 	KDict *dict = &(KGetProtoMap(o)->dict);
 	KDict_Set(kctx, dict, &kvs);
-	PLATAPI WriteBarrier(kctx, o);
+	PLATAPI UpdateObjectField(kctx, o, NULL, val);
 }
 
 static void kObjectProto_SetUnboxValue(KonohaContext *kctx, kAbstractObject *ao, ksymbol_t key, kattrtype_t ty, uintptr_t unboxValue)
@@ -700,7 +700,7 @@ static void kObjectProto_SetObject(KonohaContext *kctx, kAbstractObject *o, ksym
 	kObjectVar *v = (kObjectVar *)o;
 	if(ty == 0) ty = O_ct(v)->typeId;
 	protomap_set((Kprotomap_t **)&v->h.prototypePtr, key, ty | TypeAttr_Boxed, (void *)val);
-	PLATAPI WriteBarrier(kctx, v);
+	PLATAPI UpdateObjectField(kctx, v, NULL,val);
 }
 
 static void kObjectProto_SetUnboxValue(KonohaContext *kctx, kAbstractObject *o, ksymbol_t key, kattrtype_t ty, uintptr_t unboxValue)
@@ -748,7 +748,7 @@ static void dumpProto(KonohaContext *kctx, void *arg, KKeyValue *d)
 	}
 	KLIB KBuffer_printf(kctx, w->wb, "%s%s: (%s)", PSYM_t(key), ATY_t(d->attrTypeId));
 	if(TypeAttr_Is(Boxed, d->attrTypeId)) {
-		KUnsafeFieldSet(w->values[w->pos].asObject, d->ObjectValue);
+		KFieldSet(NULL,w->values[w->pos].asObject, d->ObjectValue);
 	}
 	else {
 		w->values[w->pos].unboxValue = d->unboxValue;
@@ -769,7 +769,7 @@ static void DumpObject(KonohaContext *kctx, kObject *o, const char *file, const 
 	KGrowingBuffer wb;
 	KonohaStack *lsfp = kctx->esp;
 	KLIB KBuffer_Init(&(kctx->stack->cwb), &wb);
-	KUnsafeFieldSet(lsfp[0].asObject, o);
+	KFieldSet(NULL,lsfp[0].asObject, o);
 	O_ct(o)->p(kctx, lsfp, 0, &wb);
 	const char *msg = KLIB KBuffer_Stringfy(kctx, &wb, 1);
 	if(file == NULL) {
@@ -794,7 +794,7 @@ static kbool_t KonohaRuntime_tryCallMethod(KonohaContext *kctx, KonohaStack *sfp
 	}
 	memcpy(&lbuf, runtime->evaljmpbuf, sizeof(jmpbuf_i));
 	runtime->bottomStack = sfp;
-	KUnsafeFieldSet(runtime->OptionalErrorInfo, TS_EMPTY);
+	KFieldSet(NULL,runtime->OptionalErrorInfo, TS_EMPTY);
 	kbool_t result = true;
 	int jumpResult;
 	INIT_GCSTACK();
@@ -819,7 +819,7 @@ static void KonohaRuntime_raise(KonohaContext *kctx, int symbol, int fault, kStr
 		runtime->topStack = top;
 		runtime->faultInfo = fault;
 		if(optionalErrorInfo != NULL) {
-			KUnsafeFieldSet(runtime->OptionalErrorInfo, optionalErrorInfo);
+			KFieldSet(NULL,runtime->OptionalErrorInfo, optionalErrorInfo);
 		}
 		PLATAPI longjmp_i(*runtime->evaljmpbuf, symbol);  // in setjmp 0 means good
 	}

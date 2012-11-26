@@ -62,10 +62,10 @@ static void kToken_Init(KonohaContext *kctx, kObject *o, void *conf)
 	tk->uline     =   0;
 	tk->unresolvedTokenType = (ksymbol_t)(intptr_t)conf;
 	if(tk->unresolvedTokenType == 0  || Symbol_Unmask(tk->unresolvedTokenType) != tk->unresolvedTokenType) {
-		KUnsafeFieldInit(tk->text, TS_EMPTY);
+		KFieldInit(NULL,tk->text, TS_EMPTY);
 	}
 	else {
-		KUnsafeFieldInit(tk->text, SYM_s(tk->unresolvedTokenType));
+		KFieldInit(NULL,tk->text, SYM_s(tk->unresolvedTokenType));
 	}
 	tk->resolvedSyntaxInfo = NULL;
 }
@@ -135,12 +135,12 @@ static void kToken_p(KonohaContext *kctx, KonohaValue *values, int pos, KGrowing
 		kArray *a = tk->subTokenList;
 		KLIB KBuffer_Write(kctx, wb, "[", 1);
 		if(kArray_size(a) > 0) {
-			KUnsafeFieldSet(values[pos+1].asToken, a->TokenItems[0]);
+			KFieldSet(NULL,values[pos+1].asToken, a->TokenItems[0]);
 			kToken_p(kctx, values, pos+1, wb);
 		}
 		for(i = 1; i < kArray_size(a); i++) {
 			KLIB KBuffer_Write(kctx, wb, " ", 1);
-			KUnsafeFieldSet(values[pos+1].asToken, a->TokenItems[i]);
+			KFieldSet(NULL,values[pos+1].asToken, a->TokenItems[i]);
 			kToken_p(kctx, values, pos+1, wb);
 		}
 		KLIB KBuffer_Write(kctx, wb, "]", 1);
@@ -177,7 +177,7 @@ static void kExprTerm_p(KonohaContext *kctx, kObject *o, KonohaValue *values, in
 		KBuffer_WriteTokenText(kctx, wb, (kToken *)o);
 	}
 	else {
-		KUnsafeFieldSet(values[pos].asObject, o);
+		KFieldSet(NULL,values[pos].asObject, o);
 		O_ct(o)->p(kctx, values, pos, wb);
 	}
 }

@@ -94,7 +94,7 @@ static void kObject_WriteToBuffer(KonohaContext *kctx, kObject *o, int isDelim, 
 			sfp[pos].unboxValue = O_unbox(o);
 		}
 		else {
-			KUnsafeFieldSet(sfp[pos].asObject, o);
+			KFieldSet(NULL,sfp[pos].asObject, o);
 		}
 		O_ct(o)->p(kctx, sfp, pos, wb);
 	}
@@ -1055,7 +1055,7 @@ static void KonohaRuntime_Init(KonohaContext *kctx, KonohaContextVar *ctx)
 	KLIB KArray_Init(kctx, &share->classTable, K_CLASSTABLE_INITSIZE * sizeof(KonohaClass));
 	loadInitStructData(kctx);
 
-	KUnsafeFieldInit(share->GlobalConstList, new_(Array, 8, OnField));
+	KFieldInit(share,share->GlobalConstList, new_(Array, 8, OnField));
 
 	share->longClassNameMapNN = KLIB KHashMap_Init(kctx, 0);
 	share->fileIdList_OnGlobalConstList         = new_(StringArray, 8, OnGlobalConstList);

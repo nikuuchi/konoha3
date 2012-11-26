@@ -57,10 +57,10 @@ static void KonohaStackRuntime_Init(KonohaContext *kctx, KonohaContextVar *ctx, 
 	assert(stacksize>64);
 	base->stack_uplimit = base->stack + (stacksize - 64);
 	for(i = 0; i < stacksize; i++) {
-		KUnsafeFieldInit(base->stack[i].asObject, K_NULL);
+		KFieldInit(NULL,base->stack[i].asObject, K_NULL);
 	}
-	KUnsafeFieldInit(base->ContextConstList, new_(Array, 8, OnField));
-	KUnsafeFieldInit(base->OptionalErrorInfo, TS_EMPTY);
+	KFieldInit(NULL,base->ContextConstList, new_(Array, 8, OnField));
+	KFieldInit(NULL,base->OptionalErrorInfo, TS_EMPTY);
 	base->gcstack_OnContextConstList = new_(Array, K_PAGESIZE/sizeof(void *), base->ContextConstList);
 	KLIB KArray_Init(kctx, &base->cwb, K_PAGESIZE * 4);
 	ctx->esp = base->stack;

@@ -592,7 +592,7 @@ struct KonohaFactory {
 	kbool_t (*IsKonohaObject)(KonohaContext *kctx, void *ptr);
 	void  (*VisitObject)(struct KObjectVisitor *visitor, struct kObjectVar *obj);
 	void  (*WriteBarrier)(KonohaContext *, const struct kObjectVar *);
-	void  (*UpdateObjectField)(const struct kObjectVar *parent, const struct kObjectVar *oldPtr, const struct kObjectVar *newVal);
+	void  (*UpdateObjectField)(KonohaContext *kctx, const struct kObjectVar *parent, const struct kObjectVar *oldPtr, const struct kObjectVar *newVal);
 
 	/* Event Handler API */
 	KModuleInfo *EventInfo;
@@ -1152,14 +1152,15 @@ struct KonohaClassField {
 typedef struct KonohaObjectHeader {
 	kmagicflag_t magicflag;
 	KonohaClass *ct;
+	intptr_t refc;
 	KProtoMap *prototypePtr;
 } KonohaObjectHeader;
 
 struct kObjectVar {
 	KonohaObjectHeader h;
 	union {
-		kObject  *fieldObjectItems[5];
-		uintptr_t fieldUnboxItems[5];
+		kObject  *fieldObjectItems[4];
+		uintptr_t fieldUnboxItems[4];
 	};
 };
 
@@ -1832,7 +1833,7 @@ typedef struct {
 #define KRefDecObject(T, O)
 
 #define GC_WRITE_BARRIER(kctx, PARENT, VAR, VAL)\
-	(PLATAPI UpdateObjectField((struct kObjectVar *)(PARENT), (struct kObjectVar *)(VAR), ((struct kObjectVar *)(VAL))))
+	(PLATAPI UpdateObjectField(kctx, (struct kObjectVar *)(PARENT), (struct kObjectVar *)(VAR), ((struct kObjectVar *)(VAL))))
 
 #define KUnsafeFieldInit(VAR, VAL) OBJECT_SET(VAR, VAL)
 #define KUnsafeFieldSet( VAR, VAL) (VAR) = (VAL) /* for c-compiler type check */
@@ -1877,7 +1878,7 @@ typedef struct {
 #define KGetLexicalNameSpace(sfp)    sfp[K_NSIDX].asNameSpace
 
 #define KReturnWith(VAL, CLEANUP) do {\
-	KUnsafeFieldSet(sfp[K_RTNIDX].asObject, ((kObject *)VAL));\
+	KFieldSet(NULL,sfp[K_RTNIDX].asObject, ((kObject *)VAL));\
 	CLEANUP;\
 	KCheckSafePoint(kctx, sfp);\
 	return; \
@@ -1889,12 +1890,12 @@ typedef struct {
 } while(0)
 
 #define KReturnField(vv) do {\
-	KUnsafeFieldSet(sfp[(-(K_CALLDELTA))].asObject, ((kObject *)vv));\
+	KFieldSet(NULL,sfp[(-(K_CALLDELTA))].asObject, ((kObject *)vv));\
 	return; \
 } while(0)
 
 #define KReturn(vv) do {\
-	KUnsafeFieldSet(sfp[(-(K_CALLDELTA))].asObject, ((kObject *)vv));\
+	KFieldSet(NULL,sfp[(-(K_CALLDELTA))].asObject, ((kObject *)vv));\
 	KCheckSafePoint(kctx, sfp);\
 	return; \
 } while(0)

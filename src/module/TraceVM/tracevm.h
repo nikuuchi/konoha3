@@ -324,7 +324,7 @@ typedef struct OPCALL {
 #define OPEXEC_CALL(UL, THIS, espshift, CTO) do {\
 	kMethod *mtd_ = rbp[THIS+K_MTDIDX2].calledMethod;\
 	KonohaStack *sfp_ = (KonohaStack *)(rbp + THIS); \
-	KUnsafeFieldSet(sfp_[K_RTNIDX].asObject, CTO);\
+	KFieldSet(NULL,sfp_[K_RTNIDX].asObject, CTO);\
 	sfp_[K_RTNIDX].calledFileLine = UL;\
 	sfp_[K_SHIFTIDX].previousStack = (KonohaStack *)(rbp);\
 	sfp_[K_PCIDX].pc = PC_NEXT(pc);\
