@@ -1055,7 +1055,7 @@ static void KonohaRuntime_Init(KonohaContext *kctx, KonohaContextVar *ctx)
 	KLIB KArray_Init(kctx, &share->classTable, K_CLASSTABLE_INITSIZE * sizeof(KonohaClass));
 	loadInitStructData(kctx);
 
-	KFieldInit(share,share->GlobalConstList, new_(Array, 8, OnField));
+	KFieldInit(NULL,share->GlobalConstList, new_(Array, 8, OnField));
 
 	share->longClassNameMapNN = KLIB KHashMap_Init(kctx, 0);
 	share->fileIdList_OnGlobalConstList         = new_(StringArray, 8, OnGlobalConstList);

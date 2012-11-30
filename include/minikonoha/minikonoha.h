@@ -1878,7 +1878,7 @@ typedef struct {
 #define KGetLexicalNameSpace(sfp)    sfp[K_NSIDX].asNameSpace
 
 #define KReturnWith(VAL, CLEANUP) do {\
-	KFieldSet(NULL,sfp[K_RTNIDX].asObject, ((kObject *)VAL));\
+	KUnsafeFieldSet(sfp[K_RTNIDX].asObject, ((kObject *)VAL));\
 	CLEANUP;\
 	KCheckSafePoint(kctx, sfp);\
 	return; \
@@ -1890,12 +1890,12 @@ typedef struct {
 } while(0)
 
 #define KReturnField(vv) do {\
-	KFieldSet(NULL,sfp[(-(K_CALLDELTA))].asObject, ((kObject *)vv));\
+	KUnsafeFieldSet(sfp[(-(K_CALLDELTA))].asObject, ((kObject *)vv));\
 	return; \
 } while(0)
 
 #define KReturn(vv) do {\
-	KFieldSet(NULL,sfp[(-(K_CALLDELTA))].asObject, ((kObject *)vv));\
+	KUnsafeFieldSet(sfp[(-(K_CALLDELTA))].asObject, ((kObject *)vv));\
 	KCheckSafePoint(kctx, sfp);\
 	return; \
 } while(0)

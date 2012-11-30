@@ -233,7 +233,7 @@ static inline void *do_malloc(size_t size)
 {
 	void *ptr = malloc(size);
 	do_bzero(ptr, size);
-	printf("malloc:%zd\n",size);
+	//printf("malloc:%zd\n",size);
 	//DBG_CHECK_MALLOCED_INC_SIZE(size);
 	return ptr;
 }
@@ -241,7 +241,7 @@ static inline void *do_malloc(size_t size)
 static inline void *do_calloc(size_t count, size_t size)
 {
 	void *ptr = calloc(count, size);
-	printf("calloc:%zd\n",size);
+	//printf("calloc:%zd\n",size);
 	//DBG_CHECK_MALLOCED_INC_SIZE(size);
 	return ptr;
 }
@@ -337,6 +337,7 @@ static void Kfree(KonohaContext *kctx, void *p, size_t s)
 /* ------------------------------------------------------- */
 #define FREELIST_POP(o,i) do {\
 	if(gcContext->FreeList[i] == NULL){\
+		printf("Heap extend%d\n",(i));\
 		extendHeap[i](gcContext);\
 	}\
 	o = gcContext->FreeList[i];\
@@ -694,20 +695,20 @@ static void dec_ref_cnt(KonohaContext *kctx, kObject *obj, ObjectGraphTracer *tr
 
 		KLIB kObjectProto_Reftrace(kctx, obj, &tracer->base);
 		ref = mstack_next(mstack);
+		OBJECT_REUSE(obj,page_size);
 		if(unlikely(ref == NULL))
-			OBJECT_REUSE(obj,page_size);
 			return;
 		do {
+			printf("ref:0x%lx\n",(uintptr_t)ref);
 			dec_ref_cnt(kctx, ref, tracer, mstack);
 		} while((ref = mstack_next(mstack)) != NULL);
-		printf("hello\n");
-		OBJECT_REUSE(obj,page_size);
 	}
 }
 
 static void Kwrite_barrier(KonohaContext *kctx, kObject *parent)
 {
 	//TODO
+	printf("Write Barrier!!!!\n");
 }
 
 static void KupdateObjectField(KonohaContext *kctx, kObject *parent, kObject *oldValPtr, kObject *newVal)
@@ -720,6 +721,13 @@ static void KupdateObjectField(KonohaContext *kctx, kObject *parent, kObject *ol
 	tracer.gcContext          = gcContext;
 	tracer.mstack             = mstack;
 
+	/*
+	if(oldValPtr != NULL) {
+		printf("inc_ref:0x%lx,count:%d,  dec_ref:0x%lx,count:%d\n",newVal,newVal->h.refc,oldValPtr,oldValPtr->h.refc);
+	}else{
+		//printf("inc_ref:0x%lx,count:%d\n",newVal,newVal->h.refc);
+	}
+	*/
 	inc_ref_cnt(newVal);
 	if(oldValPtr != NULL) {
 		dec_ref_cnt(kctx, oldValPtr, &tracer, mstack);
@@ -728,11 +736,7 @@ static void KupdateObjectField(KonohaContext *kctx, kObject *parent, kObject *ol
 
 static void mark_mstack(GcContext *gcContext, kObject *ref, MarkStack *mstack)
 {
-	//FIXME
-	if(!Object_isMark(ref)) {
-		Object_setMark((kObjectVar *)ref);
-		mstack_Push(mstack, ref);
-	}
+	mstack_Push(mstack, ref);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -742,7 +746,7 @@ static kObjectVar *KallocObject(KonohaContext *kctx, size_t size, KTraceInfo *tr
 	int page_size = (size / sizeof(kGCObject0)) >> 1;
 	DBG_ASSERT(page_size <= 4);
 	kGCObject *o = NULL;
-	printf("KallocObject:%zd\n",size);
+	//printf("KallocObject:%zd\n",size);
 	FREELIST_POP(o,page_size);
 	gcContext->FreeList_size[page_size] -= 1;
 	do_bzero((void*)o, size);
