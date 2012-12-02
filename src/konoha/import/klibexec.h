@@ -234,7 +234,7 @@ KLIBDECL void KDict_Add(KonohaContext *kctx, KDict *dict, KKeyValue *kvs)
 {
 	size_t size = KDict_size(dict);
 	KDict_Ensure(kctx, dict, 1);
-	memcpy(dict->data.keyValueItems + size, kvs, sizeof(KKeyValue));
+	memcpy(dict->data.keyValueItems + size, kvs, sizeof(KKeyValue)); //FIXME
 	dict->data.bytesize += sizeof(KKeyValue);
 	if(size - dict->sortedData > 8) {
 		KDict_Sort(kctx, dict);
@@ -268,7 +268,7 @@ KLIBDECL void KDict_MergeData(KonohaContext *kctx, KDict *dict, KKeyValue *kvs, 
 	size_t i;
 	if(KDict_size(dict) == 0) {
 		KDict_Ensure(kctx, dict, nitems);
-		memcpy(dict->data.keyValueItems, kvs, nitems * sizeof(KKeyValue));
+		memcpy(dict->data.keyValueItems, kvs, nitems * sizeof(KKeyValue)); //FIXME
 		dict->data.bytesize = nitems * sizeof(KKeyValue);
 		KDict_Sort(kctx, dict);
 		return;
@@ -374,7 +374,7 @@ static KHashMapEntry *KHashMap_newEntry(KonohaContext *kctx, KHashMap *kmap, kui
 		char *oarena = (char *)kmap->arena;
 		kmap->arenasize *= 2;
 		kmap->arena = (KHashMapEntry *)KMalloc_UNTRACE(kmap->arenasize * sizeof(KHashMapEntry));
-		memcpy(kmap->arena, oarena, oarenasize * sizeof(KHashMapEntry));
+		memcpy(kmap->arena, oarena, oarenasize * sizeof(KHashMapEntry)); //FIXME
 		KHashMap_ShiftPointer(kmap, (char *)kmap->arena - oarena);
 		KHashMap_MakeFreeList(kmap, oarenasize, kmap->arenasize);
 		KFree(oarena, oarenasize * sizeof(KHashMapEntry));

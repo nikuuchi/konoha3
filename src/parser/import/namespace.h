@@ -431,7 +431,7 @@ static kbool_t kNameSpace_MergeConstData(KonohaContext *kctx, kNameSpaceVar *ns,
 	size_t i, size = kNameSpace_sizeConstTable(ns);
 	if(size == 0) {
 		KLIB KArray_Init(kctx, &ns->constTable.data, (nitems + 8) * sizeof(KKeyValue));
-		memcpy(ns->constTable.data.keyValueItems, kvs, nitems * sizeof(KKeyValue));
+		memcpy(ns->constTable.data.keyValueItems, kvs, nitems * sizeof(KKeyValue)); //FIXME
 	}
 	else {
 		KGrowingBuffer wb;
@@ -464,7 +464,7 @@ static kbool_t kNameSpace_MergeConstData(KonohaContext *kctx, kNameSpaceVar *ns,
 			if(!((size + nitems) * sizeof(KKeyValue) < ns->constTable.data.bytemax)) {
 				KLIB KArray_Resize(kctx, &ns->constTable.data, (size + nitems + 8) * sizeof(KKeyValue));
 			}
-			memcpy(ns->constTable.data.keyValueItems + size, kvs, nitems * sizeof(KKeyValue));
+			memcpy(ns->constTable.data.keyValueItems + size, kvs, nitems * sizeof(KKeyValue)); //FIXME
 		}
 		KLIB KBuffer_Free(&wb);
 	}

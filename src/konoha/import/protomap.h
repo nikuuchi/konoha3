@@ -133,7 +133,7 @@ static inline Kprotomap_t *protomap_create(const protomap_api_t *api)
 
 static inline void map_record_copy(map_record_t *dst, const map_record_t *src)
 {
-	memcpy(dst, src, sizeof(map_record_t));
+	memcpy(dst, src, sizeof(map_record_t)); //FIXME
 }
 
 static inline map_record_t *hashmap_at(hashmap_t *m, unsigned idx)
@@ -319,7 +319,7 @@ static void dictmap_api_Init(Kprotomap_t *_m, unsigned init)
 
 static void dictmap_record_copy(map_record_t *dst, const map_record_t *src)
 {
-	memcpy(dst, src, sizeof(map_record_t));
+	memcpy(dst, src, sizeof(map_record_t)); //FIXME
 }
 
 static inline map_record_t *dictmap_at(dictmap_t *m, unsigned idx)

@@ -672,7 +672,7 @@ static KonohaClassVar* new_KonohaClass(KonohaContext *kctx, KonohaClass *bct, KD
 	KUnlock(share->classTableMutex);
 	if(bct != NULL) {
 		DBG_ASSERT(s == NULL);
-		memcpy(ct, bct, offsetof(KonohaClass, methodList_OnGlobalConstList));
+		memcpy(ct, bct, offsetof(KonohaClass, methodList_OnGlobalConstList)); //FIXME
 		ct->typeId = newid;
 		if(ct->fnull == DEFAULT_fnull) ct->fnull =  DEFAULT_fnullinit;
 	}

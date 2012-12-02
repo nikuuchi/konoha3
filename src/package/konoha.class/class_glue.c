@@ -111,7 +111,7 @@ static void ObjectField_Init(KonohaContext *kctx, kObject *o, void *conf)
 {
 	KonohaClass *c = O_ct(o);
 	size_t fieldsize = c->fieldsize;
-	memcpy(((kObjectVar *)o)->fieldObjectItems, c->defaultNullValue_OnGlobalConstList->fieldObjectItems, fieldsize * sizeof(void *));
+	memcpy(((kObjectVar *)o)->fieldObjectItems, c->defaultNullValue_OnGlobalConstList->fieldObjectItems, fieldsize * sizeof(void *)); //FIXME
 }
 
 static void ObjectField_Reftrace(KonohaContext *kctx, kObject *o, KObjectVisitor *visitor)
@@ -171,12 +171,12 @@ static void KonohaClass_InitField(KonohaContext *kctx, KonohaClassVar *definedCl
 		definedClass->fieldAllocSize = fieldsize;
 		definedClass->fieldsize = superClass->fieldsize; /* supsize */
 		if(superClass->fieldsize > 0) {
-			memcpy(definedClass->fieldItems, superClass->fieldItems, sizeof(KonohaClassField) * superClass->fieldsize);
+			memcpy(definedClass->fieldItems, superClass->fieldItems, sizeof(KonohaClassField) * superClass->fieldsize); //FIXME
 		}
 	}
 	definedClass->fnull(kctx, definedClass);  // first generation of DefaultValueAsNull
 	superClass->fnull(kctx, superClass); // ensure default value of super class
-	memcpy(definedClass->defaultNullValueVar_OnGlobalConstList->fieldObjectItems, superClass->defaultNullValueVar_OnGlobalConstList->fieldObjectItems, sizeof(kObject *) * superClass->fieldsize);
+	memcpy(definedClass->defaultNullValueVar_OnGlobalConstList->fieldObjectItems, superClass->defaultNullValueVar_OnGlobalConstList->fieldObjectItems, sizeof(kObject *) * superClass->fieldsize); //FIXME
 	definedClass->init     = ObjectField_Init;
 	definedClass->reftrace = ObjectField_Reftrace;
 	definedClass->superTypeId = superClass->typeId;

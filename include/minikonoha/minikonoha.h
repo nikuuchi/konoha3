@@ -1152,14 +1152,15 @@ struct KonohaClassField {
 typedef struct KonohaObjectHeader {
 	kmagicflag_t magicflag;
 	KonohaClass *ct;
+	intptr_t refc;
 	KProtoMap *prototypePtr;
 } KonohaObjectHeader;
 
 struct kObjectVar {
 	KonohaObjectHeader h;
 	union {
-		kObject  *fieldObjectItems[5];
-		uintptr_t fieldUnboxItems[5];
+		kObject  *fieldObjectItems[4];
+		uintptr_t fieldUnboxItems[4];
 	};
 };
 
