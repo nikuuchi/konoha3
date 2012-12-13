@@ -137,13 +137,12 @@ static void DeclementReference(/*KonohaContext *kctx,*/ kObject *oldValPtr)
 	}
 }
 
+//TODO add kctx for reftrace
 static void KupdateObjectField(kObject *parent, kObject *oldValPtr, kObject *newVal)
 {
 	((kObjectVar*)(newVal))->h.refc++;
 	if(oldValPtr != NULL) {
-		if() {
-			DeclementReference(oldValPtr);
-		}
+		DeclementReference(oldValPtr);
 	}
 }
 
